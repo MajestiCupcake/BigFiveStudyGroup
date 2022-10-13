@@ -1,0 +1,251 @@
+---
+API: 2.1
+OpenSesame: 3.3.12
+Platform: nt
+---
+set width 1024
+set uniform_coordinates yes
+set title "Extended template"
+set subject_parity even
+set subject_nr 0
+set start experiment
+set sound_sample_size -16
+set sound_freq 48000
+set sound_channels 2
+set sound_buf_size 1024
+set round_decimals 2
+set height 768
+set fullscreen no
+set form_clicks no
+set foreground white
+set font_underline no
+set font_size 18
+set font_italic no
+set font_family mono
+set font_bold no
+set experiment_path "C:/Users/sarak/OneDrive - Aarhus Universitet/26102021/Cog sci/3_semester/Perception_action"
+set disable_garbage_collection yes
+set description "A template containing a practice and an experimental phase"
+set coordinates uniform
+set compensation 0
+set canvas_backend psycho
+set bidi yes
+set background black
+
+define sketchpad Color
+	set duration 0
+	set description "Displays stimuli"
+	draw rect color="#aa007f" fill=1 h=192 name=violet_button penwidth=1 show_if=always w=192 x=-480 y=-352 z_index=0
+	draw rect color="#dada00" fill=1 h=192 name=orange_button penwidth=1 show_if=always w=192 x=288 y=-352 z_index=0
+	draw rect color="#00aa00" fill=1 h=192 name=green_button penwidth=1 show_if=always w=192 x=288 y=160 z_index=0
+	draw rect color="#00aaff" fill=1 h=192 name=blue_button penwidth=1 show_if=always w=192 x=-480 y=160 z_index=0
+
+define sketchpad Color_1
+	set duration 0
+	set description "Displays stimuli"
+	draw rect color="#aa007f" fill=1 h=192 name=violet_button penwidth=1 show_if=always w=192 x=-480 y=-352 z_index=0
+	draw rect color="#dada00" fill=1 h=192 name=orange_button penwidth=1 show_if=always w=192 x=288 y=-352 z_index=0
+	draw rect color="#00aa00" fill=1 h=192 name=green_button penwidth=1 show_if=always w=192 x=288 y=160 z_index=0
+	draw rect color="#00aaff" fill=1 h=192 name=blue_button penwidth=1 show_if=always w=192 x=-480 y=160 z_index=0
+
+define sketchpad Word
+	set duration 0
+	set description "Displays stimuli"
+	draw textline center=1 color="#aa007f" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Death show_if=always text="[Death]" x=-203.0 y=-130.0 z_index=0
+	draw textline center=1 color="#aa007f" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Guilt show_if=always text=Guilt x=0 y=0 z_index=0
+	draw textline center=1 color="#00aa00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Portfolio show_if=always text=Portfolio x=224.0 y=123.0 z_index=0
+	draw textline center=1 color="#00aa00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Abortion show_if=always text="[Abortion]" x=-288.0 y=32.0 z_index=0
+	draw textline center=1 color="#00aaff" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Methods show_if=always text="[Methods]" x=0.0 y=-232.0 z_index=0
+	draw textline center=1 color="#dada00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Pain show_if=always text="[Pain]<br />" x=192.0 y=-96.0 z_index=0
+	draw textline center=1 color="#00aaff" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name="Compiling..." show_if=always text="Compiling..." x=32.0 y=224.0 z_index=0
+	draw textline center=1 color="#dada00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Slaugth show_if=always text=Slaughter x=-224.0 y=128.0 z_index=0
+
+define sketchpad Word_1
+	set duration 0
+	set description "Displays stimuli"
+	draw textline center=1 color="#aa007f" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Death show_if=always text=Death x=-203 y=-130 z_index=0
+	draw textline center=1 color="#aa007f" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Guilt show_if=always text=Guilt x=0 y=0 z_index=0
+	draw textline center=1 color="#00aa00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Portfolio show_if=always text=Portfolio x=224 y=123 z_index=0
+	draw textline center=1 color="#00aa00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Abortion show_if=always text=Abortion x=-288 y=32 z_index=0
+	draw textline center=1 color="#00aaff" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Methods show_if=always text=Methods x=0 y=-232 z_index=0
+	draw textline center=1 color="#dada00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Pain show_if=always text=Pain x=192 y=-96 z_index=0
+	draw textline center=1 color="#00aaff" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name="Compiling..." show_if=always text="Compiling..." x=32 y=224 z_index=0
+	draw textline center=1 color="#dada00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Slaugth show_if=always text=Slaughter x=-224 y=128 z_index=0
+
+define loop block_loop
+	set source table
+	set skip 0
+	set repeat 0
+	set order random
+	set offset no
+	set item trial_sequence
+	set description "A single block of trials"
+	set cycles 8
+	set continuous no
+	set column_order ""
+	set break_if_on_first yes
+	set break_if never
+	setcycle 0 Word Death
+	setcycle 0 correct_response violet_button
+	setcycle 0 color "#aa007f"
+	setcycle 1 Word Methods
+	setcycle 1 correct_response blue_button
+	setcycle 1 color "#00aaff"
+	setcycle 2 Word Portfolio
+	setcycle 2 correct_response green_button
+	setcycle 2 color "#00aa00"
+	setcycle 3 Word Pain
+	setcycle 3 correct_response orange_button
+	setcycle 3 color "#dada00"
+	setcycle 4 Word Guilt
+	setcycle 4 correct_response violet_button
+	setcycle 4 color "#aa007f"
+	setcycle 5 Word "Compiling..."
+	setcycle 5 correct_response blue_button
+	setcycle 5 color "#00aaff"
+	setcycle 6 Word Abortion
+	setcycle 6 correct_response green_button
+	setcycle 6 color "#00aa00"
+	setcycle 7 Word Slaughter
+	setcycle 7 correct_response orange_button
+	setcycle 7 color "#dada00"
+	run trial_sequence
+
+define sequence block_sequence
+	set flush_keyboard yes
+	set description "A sequence containing a single block of trials followed by feedback to the participant"
+	run reset_feedback always
+	run block_loop always
+
+define sketchpad end_of_experiment
+	set start_response_interval no
+	set duration keypress
+	set description "A sketchpad notifying the participant that the experiment is finished"
+	draw textline center=1 color=white font_bold=no font_family=mono font_italic=no font_size=18 html=yes show_if=always text="Press any key to exit" x=0 y=0 z_index=0
+
+define sequence experiment
+	set flush_keyboard yes
+	set description "The main sequence of the experiment"
+	run instructions always
+	run experimental_loop always
+	run end_of_experiment always
+
+define loop experimental_loop
+	set source_file ""
+	set source table
+	set skip 0
+	set repeat 1
+	set order random
+	set offset no
+	set item block_sequence
+	set description "A loop containing one or more experimental blocks"
+	set cycles 1
+	set continuous no
+	set column_order practice
+	set break_if_on_first yes
+	set break_if never
+	setcycle 0 practice no
+	run block_sequence
+
+define sketchpad fixation
+	set start_response_interval no
+	set duration 1000
+	set description "Displays stimuli"
+	draw fixdot color=white show_if=always style=default x=0 y=0 z_index=0
+
+define sketchpad fixation_1
+	set start_response_interval no
+	set duration 1000
+	set description "Displays stimuli"
+	draw fixdot color=white show_if=always style=default x=0 y=0 z_index=0
+
+define sketchpad instructions
+	set start_response_interval no
+	set duration keypress
+	set description "A sketchpad containing the instructions for the participant"
+	draw textline center=1 color=white font_bold=no font_family=mono font_italic=no font_size=18 html=yes show_if=always text="Thank you for participating!<br /><br />Your task is to recognize the color shown to you and <br />- as fast as possible -<br />click on the matching color <br /><br />Press any key to begin" x=0 y=-32 z_index=0
+
+define logger logger
+	set description "Logs experimental data"
+	set auto_log yes
+
+define logger logger_1
+	set description "Logs experimental data"
+	set auto_log yes
+
+define mousetrap_response mouse
+	__warning_message__
+	draw textline text="Please start moving" x=0 y=0
+	__end__
+	set update_feedback no
+	set timeout infinite
+	set start_coordinates "0;0"
+	set skip_item no
+	set sketchpad Color
+	set save_trajectories yes
+	set reset_mouse yes
+	set number_of_buttons 4
+	set mouse_buttons_allowed "left_button;right_button"
+	set max_initiation_time 1000
+	set logging_resolution 10
+	set description "Tracks mouse movements"
+	set correct_button "[correct_response]"
+	set click_required yes
+	set check_initiation_time no
+	set button4 orange_button
+	set button3 green_button
+	set button2 blue_button
+	set button1 violet_button
+	set boundaries "upper=no lower=no left=no right=no"
+
+define mousetrap_response mouse_1
+	__warning_message__
+	draw textline text="Please start moving" x=0 y=0
+	__end__
+	set update_feedback no
+	set timeout infinite
+	set start_coordinates "0;0"
+	set skip_item no
+	set sketchpad color
+	set save_trajectories yes
+	set reset_mouse yes
+	set number_of_buttons 4
+	set mouse_buttons_allowed "left_button;right_button"
+	set max_initiation_time 1000
+	set logging_resolution 10
+	set description "Tracks mouse movements"
+	set correct_button "[correct_response]"
+	set click_required yes
+	set check_initiation_time no
+	set button4 orange_button
+	set button3 green_button
+	set button2 blue_button
+	set button1 violet_button
+	set boundaries "upper=no lower=no left=no right=no"
+
+define reset_feedback reset_feedback
+	set description "Resets the feedback variables, such as 'avg_rt' and 'acc'"
+
+define sketchpad tester
+	set duration 0
+	set description "Displays stimuli"
+	draw textline center=1 color="[color]" font_bold=no font_family=mono font_italic=no font_size=50 html=yes show_if=always text="[Word]" x=0 y=0 z_index=0
+
+define sequence trial_sequence
+	set flush_keyboard yes
+	set description "A single trial"
+	run fixation always
+	run tester always
+	run Color always
+	run mouse always
+	run logger always
+
+define sequence trial_sequence_1
+	set flush_keyboard yes
+	set description "A single trial"
+	run fixation_1 always
+	run Word_1 always
+	run Color_1 always
+	run mouse_1 always
+	run logger_1 always
+

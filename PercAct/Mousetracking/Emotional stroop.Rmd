@@ -1,0 +1,416 @@
+---
+title: "Mousetracking Analysis"
+author: "Sara study group 1"
+date: "10/13/2022"
+output: html_document
+---
+
+For the analysis of your very own mouse-tracking data, we will be using a package called MouseTrap. In order to get acquainted with the package, we will play around with data from a single participant conduction the circle-square experiment. 
+
+The documentation for the package can be found here: <https://www.rdocumentation.org/packages/mousetrap/versions/3.1.5/topics/mousetrap>.
+
+Use this page to solve the following steps by finding and applying appropriate mousetrap functions. Also, writing ?function_name() in the console is great way of reading about the function in question.
+
+<<<<<<< HEAD
+Call me for help whenever you get stuck (or take a quick look in the solutions file) :-)
+=======
+Call me for help whenever you get stuck (or take a quick look in the solutions file) :D
+>>>>>>> 451bec789a2e73428b2797bb8af1297cd068bc5a
+
+### Install packages and load in the data
+```{r}
+# loading packages
+pacman::p_load(mousetrap, tidyverse, ggplot2, gridExtra)
+
+# loading in data
+d1 <- read.csv('subject-8.csv')
+d2 <- read.csv('subject-9.csv')
+d3 <- read.csv('subject-10.csv')
+d4 <- read.csv('subject-19.csv')
+d5 <- read.csv('subject-12345678.csv')
+list_df <- list(d1,d2,d3,d4,d5)
+d1$ID <- "A"
+d1 %>% 
+  mutate(ID='A')
+for (i in list_df){
+  mutate(ID=i)
+}
+
+imap(list_df, ~.x %>% 
+                  mutate(unique.id = .y) %>%
+       left_join(list_df))
+
+
+# loading in data
+d <- read_csv('example_data/subject-3.csv')
+
+
+df <- list.files(pattern='.csv') %>% 
+  lapply(read_csv) %>% 
+  bind_rows
+```
+
+### Turn the data into a mousetrap object
+```{r}
+m <- mousetrap::mt_import_mousetrap(d)
+m3<- mousetrap::mt_import_mousetrap(d3)
+m <- mt_import_mousetrap(d)
+```
+Take a moment to look at the structure that it created. What are the elements, what information does it provide?
+
+### Make a quick plot using the mt_plot() function
+Try to understand what the lines mean and how to “read” the graph. What seems weird about it when you think about how the experiment task looked like?
+```{r}
+# initial plot
+mt_plot(m)
+mt_plot(m3)
+
+# specified
+mt_plot(data = m, use = 'trajectories')
+```
+
+### Make a plot in which the lines are coloured by condition
+The demo-experiment had different trial types for which we have different predictions. Make a plot that distinguishes these two conditions, e.g. by different colors. 
+```{r}
+mt_plot(m, color = 'trial_type')
+mt_plot(m3,color='trial_type')
+```
+
+
+### Mirror-symmetric mapping of movements
+Find a function that does a mirror-symmetric mapping of all the movements from the right side to the left side so that all movements overlap. Plot again. What does this function also do?
+```{r}
+# align the mouse trajectories to one side
+m <- mt_remap_symmetric(
+  m, 
+  use = 'trajectories',
+  remap_xpos = "left"
+  )
+
+# plot again
+mt_plot(
+  m, 
+  use = 'trajectories',
+  color = 'trial_type'
+  )
+
+# turns the data upside down, so it resembles the actual mouse tracking task
+
+# align the mouse trajectories to one side
+m3 <- mt_remap_symmetric(
+  m3, 
+  use = 'trajectories',
+  remap_xpos = "left"
+  )
+
+# plot again
+mt_plot(
+  m3, 
+  use = 'trajectories',
+  color = 'trial_type'
+  )
+```
+
+### Plot timestamps by xpos
+The standard plotting function shows x and y coordinates. Modify it so you plot timestamps by xpos. What do you see? What is this line in the beginning?
+```{r}
+a <- mt_plot(
+mt_plot(
+  m, 
+  x = 'timestamps', # modifying the x-axis to plot timestamps
+  y = 'xpos',       # modifying the y-axis to plot the xpos
+  use = 'trajectories',
+  color = 'trial_type' 
+)
+
+b <- mt_plot(
+  m3, 
+  x = 'timestamps', # modifying the x-axis to plot timestamps
+  y = 'xpos',       # modifying the y-axis to plot the xpos
+  use = 'trajectories',
+  color = 'trial_type' 
+)
+
+ab <- gridExtra::grid.arrange(a,b)
+```
+
+### Find a function that removes the initial phase without mouse-movement
+Find a function to remove this “line”.
+
+```{r}
+m <- mt_exclude_initiation(m)
+m3 <- mt_exclude_initiation(m3)
+```
+
+Before plotting again (timestamps and xpos) think about how you expect it to look. Then plot it, to see if you were right.
+```{r}
+c <- mt_plot(
+mt_plot(
+  m, 
+  x = 'timestamps', # modifying the x-axis to plot timestamps
+  y = 'xpos',       # modifying the y-axis to plot the xpos
+  use = 'trajectories',
+  color = 'trial_type' 
+)
+d <- mt_plot(
+  m3, 
+  x = 'timestamps', # modifying the x-axis to plot timestamps
+  y = 'xpos',       # modifying the y-axis to plot the xpos
+  use = 'trajectories',
+  color = 'trial_type' 
+)
+grid.arrange(c,d,a,b,nrow=2)
+```
+
+
+### Time-normalize the data
+Apply the function “mt_time_normalize”
+```{r}
+m <- mt_time_normalize(m)
+m3 <- mt_time_normalize(m3)
+```
+
+Now look at your data variable (the mt object) where a new matrix appeared. What do you notice? What does the function do? After you have thought about it yourself, check the documentation!
+
+
+### Plot the normalized trajectories
+Find out how to plot the normalized trajectories instead of the raw data.
+```{r}
+mt_plot(
+  m, 
+  use = 'tn_trajectories',
+  color = 'trial_type'
+)
+```
+
+
+### Play around with the mt_time_normalize() function
+Take a moment to play around with different numbers of steps in “mt_time_normalize” and see how that changes the shape of the trajectories, esp. when using very small numbers. Discuss what the decision about normalizing implies for the data analysis and interpretation. In the end, set the steps back to the default of 101.
+```{r}
+#100
+m_tn <- mt_time_normalize(
+  m,
+  nsteps = 100
+)
+
+#plot
+hun <- mt_plot(
+  m_tn, 
+  use = 'tn_trajectories',
+  color = 'trial_type'
+)+ggplot2::ggtitle('100')
+
+#10
+m_tn <- mt_time_normalize(
+  m,
+  nsteps = 10
+)
+
+#plot
+ten <- mt_plot(
+  m_tn, 
+  use = 'tn_trajectories',
+  color = 'trial_type'
+)+ggplot2::ggtitle('10')
+
+#50
+m_tn <- mt_time_normalize(
+  m,
+  nsteps = 50
+)
+
+#plot
+fiveten <- mt_plot(
+  m_tn, 
+  use = 'tn_trajectories',
+  color = 'trial_type'
+)+ggplot2::ggtitle('50')
+
+grid.arrange(ten,fiveten,hun,nrow=2)
+```
+
+```{r}
+m_tn <- mt_time_normalize(
+  m,
+  nsteps = 101
+)
+
+#plot
+mt_plot(
+  m_tn, 
+  use = 'tn_trajectories',
+  color = 'trial_type'
+)
+```
+
+
+### Aggregated plots
+Now we want to visualize our “findings”. Find a function that will plot averages of all the “similar” movements and all the “dissimilar” movements.
+Think: Which trajectories do we need to use, the original or the time normalized? Why? Try plotting both to see whether you were right.
+
+```{r}
+e <- mt_plot_aggregate(
+  m, 
+  use = 'trajectories',
+  color = 'trial_type'
+)+ggplot2::ggtitle('Aggregated mouse trajectories')
+
+f <- mt_plot_aggregate(
+  m_tn, 
+  use = 'tn_trajectories',
+  color = 'trial_type'
+) + 
+    ggplot2::ggtitle('Aggregated time-normalized mouse trajectories')
+
+grid.arrange(e,f)
+mt_plot_aggregate(
+  m, 
+  use = 'trajectories',
+  color = 'trial_type'
+)
+
+mt_plot_aggregate(
+  m, 
+  use = 'tn_trajectories',
+  color = 'trial_type'
+) + 
+  labs(
+    title = 'Aggregated time-normalized mouse trajectories')
+```
+
+
+### Apply the function mt_measures()
+Apply the function “mt_measures” and look at the outcome in your data variable. 
+```{r}
+m <- mt_measures(m, use = 'tn_trajectories')
+m3 <- mt_measures(m3, use = 'tn_trajectories')
+```
+
+### Aggregating measures
+Now find a function that helps you aggregate some measures of your pleasing over the two trial_types.
+```{r}
+mt3_measures_ag <- mt_aggregate(
+  m3,
+  use = 'measures',
+  use_variables = c('MAD', 'xpos_flips','AUC', 'RT'), # if you want all of the measures, exclude this line
+  use2_variables = 'trial_type'
+  )
+
+mt_measures_ag <- mt_aggregate(
+  m,
+  use = 'measures',
+  use_variables = c('MAD', 'xpos_flips','AUC', 'RT'), # if you want all of the measures, exclude this line
+  use2_variables = 'trial_type'
+  )
+
+mt_measures_ag
+```
+
+
+### Interpret the results
+Take a moment to think what these “results” could mean if this was a proper experiment which was not run by your instructor. How would you interpret this? Does this match your hypothesis? Especially look at the MAD (maximum absolute deviation from the direct path), the AUC (area under the curve) and the reaction time. 
+<<<<<<< HEAD
+```{r}
+#test's for laura
+m_mea3 <- as.data.frame(m3$measures)
+m_mad_auc3 <- subset(m_mea3,select=c(MAD,AUC,RT))
+m_data <- as.data.frame(m3$data)
+m_data_trial <- subset(m_data,select=c(trial_type))
+use3 <- merge(m_data_trial,m_mad_auc3)
+auc3 <- t.test(AUC~trial_type,data=use3) 
+MAD3 <- t.test(MAD~trial_type,data=use3) 
+rt3 <- t.test(RT~trial_type,data=use3) 
+
+#test's for sara
+m_mea <- as.data.frame(m$measures)
+m_mad_auc <- subset(m_mea,select=c(MAD,AUC,RT))
+m_data <- as.data.frame(m$data)
+m_data_trial <- subset(m_data,select=c(trial_type))
+use <- merge(m_data_trial,m_mad_auc)
+auc <- t.test(AUC~trial_type,data=use) 
+MAD <- t.test(MAD~trial_type,data=use) 
+rt <- t.test(RT~trial_type,data=use) 
+
+# tests together
+use3 <- use3 %>% 
+  mutate(ID='3')
+use <- use %>% 
+  mutate(ID="98")
+USE <- rbind(use,use3)
+auct <- t.test(AUC~trial_type,data=USE) 
+MADt <- t.test(MAD~trial_type,data=USE) 
+rtt <- t.test(RT~trial_type,data=USE) 
+
+
+#bind results together
+sara <- rbind(rt,auc,MAD)
+laura <- rbind(rt3,auc3,MAD3)
+uset <- rbind(rtt,auct,MADt)
+Trial_type <- c('RT','AUC','MAD','RT3','AUC3','MAD3','RT_T','AUC_T','MAD_T')
+tt <- rbind(sara,laura,uset)
+tt <- data.frame(Trial_type,tt)
+rownmaes <- rownames(tt)
+rownames(tt) <- c('RT','AUC','MAD','RT3','AUC3','MAD3','RT_T','AUC_T','MAD_T')
+
+#make table to compare subjects
+ttt <- table(tt$Trial_type,tt$p.value)
+names(dimnames(ttt)) <- c("Participant(s)", "P-value")
+names(dimnames(ttt))
+ttt
+```
+### Answer: no difference between trials nor participants... a bit weird but okay.
+
+
+
+## Additional exercises
+
+### Removing incorrect trials
+Normally, you'd want to remove incorrect trials. As the mouse_trap object does not function with tidyverse, figure out how to remove potential incorrect trials from your mousetrap object. 
+```{r}
+m <- mt_subset(
+  m,
+  correct == '1'
+)
+```
+
+### Discussion of mt_align
+Would the function ‘mt_align’ be useful for this data? Why or why not?
+- Nice to lay the trajectories accurately on top of each other, since the experiment is designed to place the mouse in the same starting position every time.
+
+=======
+It can do the same as mt_remap symmetric, but it can also be used to rescale (here 'space-normalize') the data. 
+
+You could align the starting and end position, as we are only interested in the trajectory of the mouse movement, not the endpoint in it self. Also, because the end point could be anywhere within the stimulus (circle or square), it looks nice to drag the trajectories to the same point. 
+
+As we only have one participant, I wouldn't say it is necessary (or beneficial, besides it looks nice). 
+
+```{r}
+# an example of aligning the data
+m_align <- mt_align(
+  m,
+  use = 'trajectories',
+  dimensions = c("xpos", "ypos"),
+  coordinates = c(0,0,-350,250),
+  align_start = T,
+  align_end = T
+)
+  
+  # plot again
+mt_plot(
+  m_align, 
+  use = 'trajectories',
+)
+```
+
+
+### ggplot
+As the mt_plot function uses ggplot, you can easily add themes, titles and such to make your plots look nice. Have a go at it!
+```{r}
+mt_plot(
+  m_align, 
+  use = 'trajectories',
+  color = 'trial_type'
+) + 
+  theme_minimal() +
+  labs(title = 'Alligned mouse-tracking data', x = 'Postition (x)', y = 'Postistion(y)', color = 'Trial Type')
+```
