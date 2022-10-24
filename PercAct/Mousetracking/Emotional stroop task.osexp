@@ -73,14 +73,15 @@ define sketchpad Word_1
 	draw textline center=1 color="#dada00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Slaugth show_if=always text=Slaughter x=-224 y=128 z_index=0
 
 define loop block_loop
+	set source_file ""
 	set source table
 	set skip 0
-	set repeat 0
+	set repeat 1
 	set order random
 	set offset no
 	set item trial_sequence
 	set description "A single block of trials"
-	set cycles 8
+	set cycles 16
 	set continuous no
 	set column_order ""
 	set break_if_on_first yes
@@ -88,27 +89,67 @@ define loop block_loop
 	setcycle 0 Word Death
 	setcycle 0 correct_response violet_button
 	setcycle 0 color "#aa007f"
+	setcycle 0 valence 1
 	setcycle 1 Word Methods
 	setcycle 1 correct_response blue_button
 	setcycle 1 color "#00aaff"
+	setcycle 1 valence 1
 	setcycle 2 Word Portfolio
 	setcycle 2 correct_response green_button
 	setcycle 2 color "#00aa00"
+	setcycle 2 valence 1
 	setcycle 3 Word Pain
 	setcycle 3 correct_response orange_button
 	setcycle 3 color "#dada00"
+	setcycle 3 valence 1
 	setcycle 4 Word Guilt
 	setcycle 4 correct_response violet_button
 	setcycle 4 color "#aa007f"
+	setcycle 4 valence 1
 	setcycle 5 Word "Compiling..."
 	setcycle 5 correct_response blue_button
 	setcycle 5 color "#00aaff"
+	setcycle 5 valence 1
 	setcycle 6 Word Abortion
 	setcycle 6 correct_response green_button
 	setcycle 6 color "#00aa00"
+	setcycle 6 valence 1
 	setcycle 7 Word Slaughter
 	setcycle 7 correct_response orange_button
 	setcycle 7 color "#dada00"
+	setcycle 7 valence 1
+	setcycle 8 Word Chair
+	setcycle 8 correct_response violet_button
+	setcycle 8 color "#aa007f"
+	setcycle 8 valence 0
+	setcycle 9 Word Water
+	setcycle 9 correct_response blue_button
+	setcycle 9 color "#00aaff"
+	setcycle 9 valence 0
+	setcycle 10 Word Mountain
+	setcycle 10 correct_response green_button
+	setcycle 10 color "#00aa00"
+	setcycle 10 valence 0
+	setcycle 11 Word Bagel
+	setcycle 11 correct_response orange_button
+	setcycle 11 color "#dada00"
+	setcycle 11 valence 0
+	setcycle 12 Word Dog
+	setcycle 12 correct_response violet_button
+	setcycle 12 color "#aa007f"
+	setcycle 12 valence 0
+	setcycle 13 Word Shirt
+	setcycle 13 correct_response blue_button
+	setcycle 13 color "#00aaff"
+	setcycle 13 valence 0
+	setcycle 14 Word Finger
+	setcycle 14 correct_response green_button
+	setcycle 14 color "#00aa00"
+	setcycle 14 valence 0
+	setcycle 15 Word Glasses
+	setcycle 15 correct_response orange_button
+	setcycle 15 color "#dada00"
+	setcycle 15 valence 0
 	run trial_sequence
 
 define sequence block_sequence
@@ -227,7 +268,7 @@ define reset_feedback reset_feedback
 	set description "Resets the feedback variables, such as 'avg_rt' and 'acc'"
 
 define sketchpad tester
-	set duration 0
+	set duration 200
 	set description "Displays stimuli"
 	draw textline center=1 color="[color]" font_bold=no font_family=mono font_italic=no font_size=50 html=yes show_if=always text="[Word]" x=0 y=0 z_index=0
 
