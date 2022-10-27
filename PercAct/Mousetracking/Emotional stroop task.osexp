@@ -23,7 +23,7 @@ set font_size 18
 set font_italic no
 set font_family mono
 set font_bold no
-set experiment_path "C:/Users/sarak/OneDrive - Aarhus Universitet/26102021/Cog sci/3_semester/Perception_action"
+set experiment_path "C:/Users/sarak/OneDrive - Aarhus Universitet/26102021/Cog sci/3_semester/BigFiveStudyGroup/PercAct/Mousetracking"
 set disable_garbage_collection yes
 set description "A template containing a practice and an experimental phase"
 set coordinates uniform
@@ -51,14 +51,14 @@ define sketchpad Color_1
 define sketchpad Word
 	set duration 0
 	set description "Displays stimuli"
-	draw textline center=1 color="#aa007f" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Death show_if=always text="[Death]" x=-203.0 y=-130.0 z_index=0
+	draw textline center=1 color="#aa007f" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Death show_if=always text="[Death]" x=-203 y=-130 z_index=0
 	draw textline center=1 color="#aa007f" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Guilt show_if=always text=Guilt x=0 y=0 z_index=0
-	draw textline center=1 color="#00aa00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Portfolio show_if=always text=Portfolio x=224.0 y=123.0 z_index=0
-	draw textline center=1 color="#00aa00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Abortion show_if=always text="[Abortion]" x=-288.0 y=32.0 z_index=0
-	draw textline center=1 color="#00aaff" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Methods show_if=always text="[Methods]" x=0.0 y=-232.0 z_index=0
-	draw textline center=1 color="#dada00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Pain show_if=always text="[Pain]<br />" x=192.0 y=-96.0 z_index=0
-	draw textline center=1 color="#00aaff" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name="Compiling..." show_if=always text="Compiling..." x=32.0 y=224.0 z_index=0
-	draw textline center=1 color="#dada00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Slaugth show_if=always text=Slaughter x=-224.0 y=128.0 z_index=0
+	draw textline center=1 color="#00aa00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Portfolio show_if=always text=Portfolio x=224 y=123 z_index=0
+	draw textline center=1 color="#00aa00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Abortion show_if=always text="[Abortion]" x=-288 y=32 z_index=0
+	draw textline center=1 color="#00aaff" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Methods show_if=always text="[Methods]" x=0 y=-232 z_index=0
+	draw textline center=1 color="#dada00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Pain show_if=always text="[Pain]<br />" x=192 y=-96 z_index=0
+	draw textline center=1 color="#00aaff" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name="Compiling..." show_if=always text="Compiling..." x=32 y=224 z_index=0
+	draw textline center=1 color="#dada00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Slaugth show_if=always text=Slaughter x=-224 y=128 z_index=0
 
 define sketchpad Word_1
 	set duration 0
@@ -89,67 +89,67 @@ define loop block_loop
 	setcycle 0 Word Death
 	setcycle 0 correct_response violet_button
 	setcycle 0 color "#aa007f"
-	setcycle 0 valence 1
+	setcycle 0 trial_type emotion
 	setcycle 1 Word Methods
 	setcycle 1 correct_response blue_button
 	setcycle 1 color "#00aaff"
-	setcycle 1 valence 1
+	setcycle 1 trial_type emotion
 	setcycle 2 Word Portfolio
 	setcycle 2 correct_response green_button
 	setcycle 2 color "#00aa00"
-	setcycle 2 valence 1
+	setcycle 2 trial_type emotion
 	setcycle 3 Word Pain
 	setcycle 3 correct_response orange_button
 	setcycle 3 color "#dada00"
-	setcycle 3 valence 1
+	setcycle 3 trial_type emotion
 	setcycle 4 Word Guilt
 	setcycle 4 correct_response violet_button
 	setcycle 4 color "#aa007f"
-	setcycle 4 valence 1
+	setcycle 4 trial_type emotion
 	setcycle 5 Word "Compiling..."
 	setcycle 5 correct_response blue_button
 	setcycle 5 color "#00aaff"
-	setcycle 5 valence 1
+	setcycle 5 trial_type emotion
 	setcycle 6 Word Abortion
 	setcycle 6 correct_response green_button
 	setcycle 6 color "#00aa00"
-	setcycle 6 valence 1
+	setcycle 6 trial_type emotion
 	setcycle 7 Word Slaughter
 	setcycle 7 correct_response orange_button
 	setcycle 7 color "#dada00"
-	setcycle 7 valence 1
+	setcycle 7 trial_type emotion
 	setcycle 8 Word Chair
 	setcycle 8 correct_response violet_button
 	setcycle 8 color "#aa007f"
-	setcycle 8 valence 0
+	setcycle 8 trial_type neutral
 	setcycle 9 Word Water
 	setcycle 9 correct_response blue_button
 	setcycle 9 color "#00aaff"
-	setcycle 9 valence 0
+	setcycle 9 trial_type neutral
 	setcycle 10 Word Mountain
 	setcycle 10 correct_response green_button
 	setcycle 10 color "#00aa00"
-	setcycle 10 valence 0
+	setcycle 10 trial_type neutral
 	setcycle 11 Word Bagel
 	setcycle 11 correct_response orange_button
 	setcycle 11 color "#dada00"
-	setcycle 11 valence 0
+	setcycle 11 trial_type neutral
 	setcycle 12 Word Dog
 	setcycle 12 correct_response violet_button
 	setcycle 12 color "#aa007f"
-	setcycle 12 valence 0
+	setcycle 12 trial_type neutral
 	setcycle 13 Word Shirt
 	setcycle 13 correct_response blue_button
 	setcycle 13 color "#00aaff"
-	setcycle 13 valence 0
+	setcycle 13 trial_type neutral
 	setcycle 14 Word Finger
 	setcycle 14 correct_response green_button
 	setcycle 14 color "#00aa00"
-	setcycle 14 valence 0
+	setcycle 14 trial_type neutral
 	setcycle 15 Word Glasses
 	setcycle 15 correct_response orange_button
 	setcycle 15 color "#dada00"
-	setcycle 15 valence 0
+	setcycle 15 trial_type neutral
 	run trial_sequence
 
 define sequence block_sequence
