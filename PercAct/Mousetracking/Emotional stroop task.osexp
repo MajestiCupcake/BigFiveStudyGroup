@@ -40,38 +40,6 @@ define sketchpad Color
 	draw rect color="#00aa00" fill=1 h=192 name=green_button penwidth=1 show_if=always w=192 x=288 y=160 z_index=0
 	draw rect color="#00aaff" fill=1 h=192 name=blue_button penwidth=1 show_if=always w=192 x=-480 y=160 z_index=0
 
-define sketchpad Color_1
-	set duration 0
-	set description "Displays stimuli"
-	draw rect color="#aa007f" fill=1 h=192 name=violet_button penwidth=1 show_if=always w=192 x=-480 y=-352 z_index=0
-	draw rect color="#dada00" fill=1 h=192 name=orange_button penwidth=1 show_if=always w=192 x=288 y=-352 z_index=0
-	draw rect color="#00aa00" fill=1 h=192 name=green_button penwidth=1 show_if=always w=192 x=288 y=160 z_index=0
-	draw rect color="#00aaff" fill=1 h=192 name=blue_button penwidth=1 show_if=always w=192 x=-480 y=160 z_index=0
-
-define sketchpad Word
-	set duration 0
-	set description "Displays stimuli"
-	draw textline center=1 color="#aa007f" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Death show_if=always text="[Death]" x=-203 y=-130 z_index=0
-	draw textline center=1 color="#aa007f" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Guilt show_if=always text=Guilt x=0 y=0 z_index=0
-	draw textline center=1 color="#00aa00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Portfolio show_if=always text=Portfolio x=224 y=123 z_index=0
-	draw textline center=1 color="#00aa00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Abortion show_if=always text="[Abortion]" x=-288 y=32 z_index=0
-	draw textline center=1 color="#00aaff" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Methods show_if=always text="[Methods]" x=0 y=-232 z_index=0
-	draw textline center=1 color="#dada00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Pain show_if=always text="[Pain]<br />" x=192 y=-96 z_index=0
-	draw textline center=1 color="#00aaff" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name="Compiling..." show_if=always text="Compiling..." x=32 y=224 z_index=0
-	draw textline center=1 color="#dada00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Slaugth show_if=always text=Slaughter x=-224 y=128 z_index=0
-
-define sketchpad Word_1
-	set duration 0
-	set description "Displays stimuli"
-	draw textline center=1 color="#aa007f" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Death show_if=always text=Death x=-203 y=-130 z_index=0
-	draw textline center=1 color="#aa007f" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Guilt show_if=always text=Guilt x=0 y=0 z_index=0
-	draw textline center=1 color="#00aa00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Portfolio show_if=always text=Portfolio x=224 y=123 z_index=0
-	draw textline center=1 color="#00aa00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Abortion show_if=always text=Abortion x=-288 y=32 z_index=0
-	draw textline center=1 color="#00aaff" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Methods show_if=always text=Methods x=0 y=-232 z_index=0
-	draw textline center=1 color="#dada00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Pain show_if=always text=Pain x=192 y=-96 z_index=0
-	draw textline center=1 color="#00aaff" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name="Compiling..." show_if=always text="Compiling..." x=32 y=224 z_index=0
-	draw textline center=1 color="#dada00" font_bold=no font_family=mono font_italic=no font_size=50 html=yes name=Slaugth show_if=always text=Slaughter x=-224 y=128 z_index=0
-
 define loop block_loop
 	set source_file ""
 	set source table
@@ -194,12 +162,6 @@ define sketchpad fixation
 	set description "Displays stimuli"
 	draw fixdot color=white show_if=always style=default x=0 y=0 z_index=0
 
-define sketchpad fixation_1
-	set start_response_interval no
-	set duration 1000
-	set description "Displays stimuli"
-	draw fixdot color=white show_if=always style=default x=0 y=0 z_index=0
-
 define sketchpad instructions
 	set start_response_interval no
 	set duration keypress
@@ -207,10 +169,6 @@ define sketchpad instructions
 	draw textline center=1 color=white font_bold=no font_family=mono font_italic=no font_size=18 html=yes show_if=always text="Thank you for participating!<br /><br />Your task is to recognize the color shown to you and <br />- as fast as possible -<br />click on the matching color <br /><br />Press any key to begin" x=0 y=-32 z_index=0
 
 define logger logger
-	set description "Logs experimental data"
-	set auto_log yes
-
-define logger logger_1
 	set description "Logs experimental data"
 	set auto_log yes
 
@@ -223,31 +181,6 @@ define mousetrap_response mouse
 	set start_coordinates "0;0"
 	set skip_item no
 	set sketchpad Color
-	set save_trajectories yes
-	set reset_mouse yes
-	set number_of_buttons 4
-	set mouse_buttons_allowed "left_button;right_button"
-	set max_initiation_time 1000
-	set logging_resolution 10
-	set description "Tracks mouse movements"
-	set correct_button "[correct_response]"
-	set click_required yes
-	set check_initiation_time no
-	set button4 orange_button
-	set button3 green_button
-	set button2 blue_button
-	set button1 violet_button
-	set boundaries "upper=no lower=no left=no right=no"
-
-define mousetrap_response mouse_1
-	__warning_message__
-	draw textline text="Please start moving" x=0 y=0
-	__end__
-	set update_feedback no
-	set timeout infinite
-	set start_coordinates "0;0"
-	set skip_item no
-	set sketchpad color
 	set save_trajectories yes
 	set reset_mouse yes
 	set number_of_buttons 4
@@ -280,13 +213,4 @@ define sequence trial_sequence
 	run Color always
 	run mouse always
 	run logger always
-
-define sequence trial_sequence_1
-	set flush_keyboard yes
-	set description "A single trial"
-	run fixation_1 always
-	run Word_1 always
-	run Color_1 always
-	run mouse_1 always
-	run logger_1 always
 
