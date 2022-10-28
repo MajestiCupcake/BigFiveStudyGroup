@@ -1,0 +1,346 @@
+---
+title: "Mousetracking Analysis"
+author: "Laura Bock Paulsen"
+date: "9/11/2022"
+output: html_document
+---
+
+For the analysis of your very own mouse-tracking data, we will be using a package called MouseTrap. In order to get acquainted with the package, we will play around with data from a single participant conduction the circle-square experiment. 
+
+The documentation for the package can be found here: <https://www.rdocumentation.org/packages/mousetrap/versions/3.1.5/topics/mousetrap>.
+
+Use this page to solve the following steps by finding and applying appropriate mousetrap functions. Also, writing ?function_name() in the console is great way of reading about the function in question.
+
+Call me for help whenever you get stuck (or take a quick look in the solutions file) :-)
+
+
+### Install packages and load in the data
+```{r}
+pacman::p_load(tidyverse, mousetrap, gridExtra, readbulk, arsenal)
+```
+
+```{r}
+df_mouse <- read_opensesame(directory = "subjects")
+
+#listm <- list.files(path = "Mousetracking/Subjects" , pattern = "subject")
+#listm = list.files(pattern="*.csv")
+#myfiles = lapply(listm, read.delim)
+
+#df <- do.call(rbind.data.frame, myfiles)
+
+```
+
+```{r}
+df_mouse$timestamps_mouse_1 <- NULL
+df_mouse$xpos_mouse_1 <- NULL
+df_mouse$ypos_mouse_1 <- NULL
+```
+
+
+### Turn the data into a mousetrap object
+Take a moment to look at the structure that it created. What are the elements, what information does it provide?
+```{r}
+
+mt_obj <- mt_import_mousetrap(df_mouse)
+```
+
+### Make a quick plot using the mt_plot() function
+Try to understand what the lines mean and how to “read” the graph. What seems weird about it when you think about how the experiment task looked like?
+```{r}
+group_colors <- c(blue_button = "#1458e8", green_button = "#249a07", orange_button = "#ec8019", violet_button = "#a919ec")
+
+plot2 <- mt_plot(mt_obj, use = "trajectories", color = "response_mouse")
+
+trajectory_plot <- plot2 + ggplot2::scale_colour_manual(values=c(blue_button = "#1458e8", green_button = "#249a07", orange_button = "#ec8019", violet_button = "#a919ec")) + ggtitle("Mousetracking Trajectory") + theme(plot.background = element_rect(fill = "grey80", colour = NA))
+trajectory_plot
+ggsave("traject.jpg", trajectory_plot)
+
+plot3 <- mt_plot_aggregate(mt_obj)
+plot3
+```
+
+
+```{r}
+group_colors
+```
+
+```{r}
+word_colors <- 
+
+plot45 <- mt_plot(mt_obj, use = "trajectories", color = "Word", size = 0.5)
+
+trajectory_plot2 <- plot45 + ggplot2::scale_colour_manual(values=c(Abortion = "#a83221", Compiling... = "#a83221", Death = "#a83221", Guilt =  "#a83221", Pain = "#a83221", Slaughter = "#a83221", Methods = "#a83221", Portfolio = "#a83221", Bagel = "#249a07", Chair = "#249a07", Dog = "#249a07", Finger = "#249a07",  Glasses = "#249a07", Mountain = "#249a07", Shirt = "#249a07", Water = "#249a07")) + ggtitle("Mousetracking Trajectory") + theme(plot.background = element_rect(fill = "grey80", colour = NA))
+trajectory_plot2
+ggsave("traject2.jpg", trajectory_plot2)
+
+ #249a07 
+ #a83221 
+
+```
+
+
+### Find a function that removes the initial phase without mouse-movement
+Find a function to remove this “line” and plot the timestamps by xpos again. 
+```{r}
+
+
+m <- mt_exclude_initiation(mt_obj)
+```
+
+
+
+**Thought experiment:** If you now plotted x and y coordinates again, what would have changed in the plot? Think first, then try it! 
+```{r}
+plot_xy <- mt_plot(m, use = "trajectories", x = "timestamps",y ="xpos", color = "Word")
+#plot_time
+plot_xy
+```
+
+### Time-normalize the data
+Apply the function “mt_time_normalize”
+```{r}
+#Re-represent each trajectory spatially using a constant number of points so that adjacent points on the trajectory become equidistant to each other
+time_norm <- mt_time_normalize(m, save_as = "tn_trajectories")
+
+```
+
+Now look at your data variable (the mt object) where a new matrix appeared. What do you notice? What does the function do? After you have thought about it yourself, check the documentation!
+
+### Plot the normalized trajectories
+Find out how to plot the normalized trajectories instead of the raw data.
+```{r}
+
+plot_tn <- mt_plot(time_norm, use = "tn_trajectories", x = "timestamps",y ="xpos", color = "Word")
+plot_tn
+```
+
+### Play around with the mt_time_normalize() function
+Take a moment to play around with different numbers of steps in “mt_time_normalize” and see how that changes the shape of the trajectories, esp. when using very small numbers. Discuss what the decision about normalizing implies for the data analysis and interpretation. In the end, set the steps back to the default of 101.
+```{r}
+# nsteps an integer specifying the number of equally sized time steps
+tn2 <- mt_time_normalize(remove_init, nsteps = 101)
+
+plot_tn2 <- mt_plot(tn2, use = "tn_trajectories", x = "timestamps",y ="xpos", color = "trial_type")
+plot_tn2
+```
+
+### Aggregated plots
+Now we want to visualize our “findings”. Find a function that will plot averages of all the “similar” movements and all the “dissimilar” movements.
+Think: Which trajectories do we need to use, the original or the time normalized? Why? Try plotting both to see whether you were right.
+```{r}
+agg <- mt_aggregate(m, use = "trajectories")
+agg_tn <- mt_aggregate(time_norm, use = "trajectories" )
+
+plot_agg <- mt_plot_aggregate(m, color = "Word")
+plot_agg
+
+plot_agg_tn <- mt_plot_aggregate(time_norm, use = "tn_trajectories", color = "Word") + labs(title = "time-normalized")
+plot_agg_tn
+
+
+```
+
+### Apply the function mt_measures()
+Apply the function “mt_measures” and look at the outcome in your data variable. 
+```{r}
+
+meas <- mt_measures(time_norm)
+meas
+```
+
+### Aggregating measures
+Now find a function that helps you aggregate some measures of your pleasing over the two trial_types.
+```{r}
+
+meas_agg <- mt_aggregate(meas, 
+                         use = "measures", 
+                         use_variables = c("RT", "idle_time", "MAD_time"),
+                         use2_variables = "Word"
+                         )
+meas_agg
+
+```
+
+
+
+```{r}
+vec2 <- c("con", "con", "con", "met","con", "con", "con", "con","con","met","con","con","met", "con","con","con")
+
+data3 <- meas_agg
+
+data3$valence <- vec2    
+
+```
+
+
+
+```{r}
+vec1 <- c("neg", "con", "con", "met","neg", "con", "con", "con","neg","met","con","neg","met", "con","neg","con")
+
+data2 <- meas_agg
+
+data2$valence <- vec1    
+
+```
+
+
+```{r}
+vec <- c("neg", "con", "con", "neg","neg", "con", "con", "con","neg","neg","con","neg","neg", "con","neg","con")
+
+data1 <- meas_agg
+
+data1$valence <- vec    
+
+```
+
+
+```{r}
+one_way <- aov(MAD_time ~ valence, data = data2)
+
+one_way2 <- aov(RT ~ valence, data = data2)
+
+```
+
+
+
+```{r}
+summary(one_way)
+summary(one_way2)
+
+
+```
+
+
+```{r}
+library(dplyr)
+group_by(data1, valence) %>%
+  summarise(
+    count = n(),
+    mean = mean(RT, na.rm = TRUE),
+    sd = sd(RT, na.rm = TRUE)
+  )
+```
+
+
+```{r}
+library(dplyr)
+group_by(data1, valence) %>%
+  summarise(
+    count = n(),
+    mean = mean(MAD_time, na.rm = TRUE),
+    sd = sd(MAD_time, na.rm = TRUE)
+  )
+
+
+```
+
+
+```{r}
+library(dplyr)
+group_by(data2, valence) %>%
+  summarise(
+    count = n(),
+    mean = mean(RT, na.rm = TRUE),
+    sd = sd(RT, na.rm = TRUE),
+  )
+
+
+```
+
+
+```{r}
+library(dplyr)
+group_by(data2, valence) %>%
+  summarise(
+    count = n(),
+    mean = mean(MAD_time, na.rm = TRUE),
+    sd = sd(MAD_time, na.rm = TRUE),
+  )
+
+```
+
+
+
+
+
+
+```{r}
+# Shapiro-Wilk normality test for Men's weights
+with(data1, shapiro.test(MAD_time[valence == "neg"]))# p = 0.1
+# Shapiro-Wilk normality test for Women's weights
+with(data1, shapiro.test(MAD_time[valence == "con"])) # p = 0.6
+
+```
+
+
+
+
+```{r}
+res.ftest <- var.test(RT ~ valence, data = data1)
+res.ftest
+
+
+```
+
+
+```{r}
+
+res <- wilcox.test(RT ~ valence, data = data1,
+                   exact = FALSE)
+res
+```
+
+```{r}
+res1 <- wilcox.test(MAD_time ~ valence, data = data1,
+                   exact = FALSE)
+res1
+
+```
+
+
+```{r}
+res3 <- wilcox.test(RT ~ valence, data = data3,
+                   exact = FALSE)
+res3
+
+```
+
+
+
+```{r}
+
+
+sum_neg <- sum(meas_agg[which(meas_agg$Word == 'Abortion' | meas_agg$Word =='Death' | meas_agg$Word =='Compiling...' | meas_agg$Word =='Guilt' | meas_agg$Word =='Methods' | meas_agg$Word =='Pain' | meas_agg$Word =='Portfolio' | meas_agg$Word =='Slaughter'), 2])
+
+sum_neg/8
+
+sum_pos <- sum(meas_agg[which(meas_agg$Word == 'Bagel' | meas_agg$Word =='Chair' | meas_agg$Word =='Dog' | meas_agg$Word =='Finger' | meas_agg$Word =='Glasses' | meas_agg$Word =='Mountain' | meas_agg$Word =='Shirt' | meas_agg$Word =='Water'), 2])
+
+sum_pos/8
+
+
+```
+
+
+
+### Interpret the results
+Take a moment to think what these “results” could mean if this was a proper experiment which was not run by your instructor. How would you interpret this? Does this match your hypothesis? Especially look at the MAD (maximum absolute deviation from the direct path), the AUC (area under the curve) and the reaction time. 
+
+It matches the hypotheses that the reaction times will generally be longer when the trial type is similar, meaning that similar stimuli crave more time to properly identify. 
+On a larger scale, the results from our only participant would probably be corroborated within a bigger sample size. 
+
+
+## Additional exercises
+
+### Removing incorrect trials
+Normally, you'd want to remove incorrect trials. As the mouse_trap object does not function with tidyverse, figure out how to remove potential incorrect trials from your mousetrap object. 
+```{r}
+
+```
+
+### Discussion of mt_align
+Would the function ‘mt_align’ be useful for this data? Why or why not?
+```{r}
+
+```
+
