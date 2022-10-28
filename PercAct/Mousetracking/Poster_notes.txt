@@ -1,0 +1,26 @@
+Introduktion (Maria):
+evt:
+- Stroop task
+- emotional valence ..
+
+Aim (Sabrina):
+-  investigate the effect of emotions on attention and cognitive processing
+- the mouse tracking component of this study may be used to further investigate how emotional information is processed by looking at patterns of movement and reaction time
+
+Exp. Setup (Sara):
+- no practice trials,
+- neutral and strong valence words (context), randomized
+- color is the same in the same position
+
+Results (Ida):
+- P-value RT = 0.167
+- Smaller effect size
+- P-value MAD-time = 0.031
+- Medium effect size
+- Just by observing trajectories on graph, we can see many extreme trajectories for negative words.
+
+Perspective (Freddy):
+- Randomize colors
+- Account for lexical similarities/dissimilarities
+- Longer initiation periods before each trial
+- Longer pauses inbetween the trial/ active transition to the next trial
