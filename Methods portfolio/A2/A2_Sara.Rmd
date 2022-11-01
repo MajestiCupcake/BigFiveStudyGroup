@@ -1,0 +1,1292 @@
+---
+title: "Assignment 2 - Meta-analysis of pitch in schizophrenia"
+author: "Riccardo Fusaroli"
+date: "16/8/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+setwd('.')
+
+#load packages
+pacman::p_load(
+  brms,
+  cmdstanr,
+  dplyr,
+  ggplot2,
+  gridExtra,
+  bayesplot,
+  rlang,
+  tidyverse,
+  rstan,
+  tidybayes,
+  grid,
+  msm,
+  metafor)
+```
+
+# Assignment 2: meta-analysis
+
+## Questions to be answered
+
+1. Simulate data to setup the analysis and gain insight on the structure of the problem.
+- Simulate one dataset of 100 studies (n of participants should follow a normal distribution with mean of 20, sd of 10, but no fewer than 10 participants), with a mean effect size of 0.4, average deviation by study of .4 and measurement error of .8. The data you get should have one row per study, with an effect size mean and standard error.
+- Build a proper bayesian model to analyze the simulated data.
+- Then simulate publication bias (only some of the studies you simulate are likely to be published, which?), the effect of publication bias on your estimates (re-run the model on published studies, assess the difference), and discuss what this implies for your model. remember to use at least one plot to visualize your results. 
+- BONUS question: do a power/precision analysis: w this kind of sample sizes (participants) how many studies would you need to acquire good precision (e.g. .1 sd in the pop level estimate)
+
+2. What is the current evidence for distinctive vocal patterns in schizophrenia? 
+Use the data from Parola et al (2020) - https://www.dropbox.com/s/0l9ur0gaabr80a8/Matrix_MetaAnalysis_Diagnosis_updated290719.xlsx?dl=0 - focusing on pitch variability (PITCH_F0SD).
+- Describe the data available (studies, participants).
+- Using the model from question 1 analyze the data, visualize and report the findings: population level effect size; how well studies reflect it; influential studies, publication bias. 
+- BONUS question: assess the effect of task on the estimates (model comparison with baseline model)
+
+
+# Question 1
+## Simulate
+one dataset of 100 studies (n of participants should follow a normal distribution with mean of 20, sd of 10, but no fewer than 10 participants), with a mean effect size of 0.4, average deviation by study of .4 and measurement error of .8. The data you get should have one row per study, with an effect size mean and standard error.
+```{r simulate data}
+set.seed(2022)
+
+#Simulate samplesize
+  # no sample can be under 10
+  n_mu <- 20
+  n_sd <- 10
+  
+#Simulate effectsizes
+  effect_mu <- 0.4
+  effect_sd <- 0.4
+  error <- 0.8 
+ 
+  #simulate 100 studies sample size
+
+  hm <- rpois(100,20)
+  sapply(list(mean, sd, min, max),function(f) f(hm))
+  #[1] 20.120000  4.300059 11.000000 31.000000
+  
+  #visually inspect
+  hist(hm) #discrete sample sizes
+  
+  #make dataframe
+  studies <- 100
+  d <- tibble(
+    Study = seq(studies),
+    SampleSize = round(msm::rtnorm(studies,n_mu,n_sd,lower=10),0),
+    EffectSize=NA,
+    EffectMu = NA,
+    EffectSigma=NA,
+    Published=NA,
+    PublishedPos=NA
+  )
+  
+for (i in seq(studies)){
+  d$EffectSize[i] <- rnorm(studies,effect_mu,effect_sd)
+  
+  sampling <- rnorm(d$SampleSize[i],d$EffectSize[i],error)
+  
+  d$EffectMu[i] <- mean(sampling)
+  
+  d$EffectSigma[i] <- sd(sampling)/sqrt(d$SampleSize[i])
+  
+  d$Published[i] <- ifelse(
+    abs(d$EffectMu[i])-(2*d$EffectSigma[i])>0,
+    rbinom(1,1,0.9),rbinom(1,1,0.1)
+  )
+  
+  d$PublishedPos[i] <- ifelse(
+    abs(d$EffectMu[i])-(2*d$EffectSigma[i])>0 & d$EffectMu[i]>0,
+    rbinom(1,1,0.9),rbinom(1,1,0.1)
+  )
+  
+}
+```
+
+```{r p-hacking}
+set.seed(2022)
+index                          <- d$Study+1
+d[index:(index+2),]            <- NA
+d$Study[index:(index+2)]       <- c(index:(index+2))
+d$SampleSize[index:(index+2)]  <- c(25,30,27)
+d$EffectSize[index:(index+2)]  <- effect_mu
+d$EffectMu[index:(index+2)]    <- c(2.5,3,2.7)
+d$EffectSigma[index:(index+2)] <- 1
+d$Published[index:(index+2)]   <- 1
+d$PublishedPos[index:(index+2)]<- 1
+```
+
+```{r plot data}
+#plot data
+library("viridis")           # Load
+
+
+sim_hm_data <- 
+  ggplot(d, aes(x = reorder(Study, -EffectSize), y = EffectSize))+
+  geom_point(aes(color = SampleSize)) +
+  scale_color_viridis(option = "turbo")+
+  theme_minimal() +
+  xlab("Study no.")+
+  theme(legend.position = "bottom")+
+  ggtitle("Simulated Effect Sizes")
+
+mean_hm <- mean(d$EffectSize)
+sim_hm_data <- sim_hm_data+geom_hline(aes(yintercept=0),color="#3FFFB6")
+ggsave('sim.png',sim_hm_data,width=7,height=7,units='in')
+sim_hm_data
+```
+
+```{r only published}
+# Subset only for the published articles
+pub <- d %>% 
+  subset(Published=='1')
+```
+
+```{r}
+sim_pub_data <- 
+  ggplot(pub, aes(Study, EffectSize))+
+  geom_point(aes(color = SampleSize)) +
+  scale_color_viridis(option = "turbo")+
+  theme_minimal() +
+  theme(legend.position = "bottom")+
+  ggtitle("Simulated Effect Sizes for Published Studies")
+mean_pub <- mean(pub$EffectSize)
+sim_pub_data <- sim_pub_data + geom_hline(aes(yintercept=mean_pub),color="#3FFFB6")
+sim_pub_data
+```
+
+## Bayesian
+priors effects sizes between -0,6 ; 0,6
+
+publication bias is more for the data, doesnot reflect the true phenomemen in effect sizes
+
+model should not be biased by the biased in the data
+model: effectsize |standard error|effectsize_se  ~ 1           + (1|Study) 
+                how do you do this ?             common intercept  (randomness for each study)
+
+Build a proper bayesian model to analyze the simulated data.
+```{r formula}
+#define the formula
+es1 <- brms::bf(EffectSize | se(EffectSigma) ~ 1 + (1|Study))
+#es2 <- brms::bf(EffectSize ~ 1 +(1|Study))
+```
+
+```{r prior}
+  # get prior
+get_prior(es1,
+          data=d,
+          gaussian)
+
+hist(d$EffectSize)
+p1 <- c(
+  prior(normal(0,0.3), class=Intercept),
+  prior(normal(0, 0.2), class=sd)
+)
+```
+
+```{r prior check}
+#fuldt data
+es1p1 <- 
+  brm(
+    es1, 
+    data = d,
+    family = gaussian,
+    prior = p1,  
+    sample_prior = "only", 
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    file = "es1p1",
+    control = list(adapt_delta = 0.99, max_treedepth = 20))
+
+# publication
+pu1p1 <- 
+  brm(
+    es1, 
+    data = pub,
+    family = gaussian,
+    prior = p1,  
+    sample_prior = "only", 
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    file = "pub1p1",
+    control = list(adapt_delta = 0.99, max_treedepth = 20))
+```
+
+```{r prior check}
+#pp checking the priors - could look better, but fine i guess
+pp1 <- pp_check(es1p1, ndraws = 100)+labs(title='All studies')
+ggsave('prior check model.png',pp1)
+
+pp2 <- pp_check(pu1p1,ndraws=100)+labs(title='Published studies')
+grid.arrange(pp1,pp2,ncol=2,top='Prior predictive check')
+```
+
+```{r fit model}
+es1p1fit <- 
+  brm(
+    es1, 
+    data = d,
+    family = gaussian,
+    prior = p1,  
+    sample_prior = T, 
+    save_pars = save_pars(all = TRUE),
+    #refit = "on_change",
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    file = "es1p1fit",
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+    stan_model_args=list(stanc_options = list("O1"))
+    )
+```
+
+```{r update models with fit}
+es1p1upd <- update(es1p1fit)
+pu1p1upd <- update(es1p1fit,newdata=subset(d,Published==1))
+# 
+# pub1p1fit <- 
+#   brm(
+#     es1, 
+#     data = pub,
+#     family = gaussian,
+#     prior = p1,  
+#     sample_prior = T, 
+#     iter = 2000,
+#     warmup = 1000,
+#     backend = "cmdstanr",
+#     threads = threading(2),
+#     cores = 2,
+#     chains = 2,
+#     file = "pub1p1fit",
+#     control = list(adapt_delta = 0.99, max_treedepth = 20))
+```
+
+```{r posterior check}
+pop1 <- pp_check(es1p1upd, ndraws = 100)+labs(title='All studies')
+
+pop2 <- pp_check(pu1p1upd,ndraws=100)+labs(title='Published studies')
+
+pop <- grid.arrange(pop1,pop2,ncol=2,top='Prior Posterior check')
+
+ggsave('posterior check.png',pop)
+```
+
+```{r prior posterior plots}
+#Model 1 fitted
+#variables(es1p1upd)
+#Sample the parameters of interest:
+Posterior_all <- as_draws_df(es1p1upd)
+  
+Intercept <- ggplot(Posterior_all)+
+  geom_density(aes(b_Intercept),
+                   fill='yellow',
+                   color='yellow',
+                   alpha=0.3
+                   )+
+  geom_density(aes(prior_Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3
+                   )+
+  geom_vline(xintercept=0.4,color="#3FFFB6")+
+  ggtitle('Intercept All')
+
+  
+Sigma <- ggplot(Posterior_all)+
+    geom_density(aes(prior_sd_Study),
+                   fill='yellow',
+                   color='yellow',
+                   alpha=0.3
+                   )+
+    geom_density(aes(sd_Study__Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3
+                   )+
+    geom_vline(xintercept=0.4,color="#3FFFB6")+
+    ggtitle('Sigma All')
+
+Posterior_pub <- as_draws_df(pu1p1upd)
+
+InterceptPub <- ggplot(Posterior_pub)+
+  geom_density(aes(b_Intercept),
+                   fill='yellow',
+                   color='yellow',
+                   alpha=0.3
+               )+
+  geom_density(aes(prior_Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3
+                   )+
+  geom_vline(xintercept=0.4,color="#3FFFB6")+
+  ggtitle('Intercept Publicated')
+
+  
+SigmaPub <- ggplot(Posterior_pub)+
+    geom_density(aes(prior_sd_Study),
+                   fill='yellow',
+                   color='yellow',
+                   alpha=0.3
+                 )+
+    geom_density(aes(sd_Study__Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3
+                 )+
+    geom_vline(xintercept=0.4,color="#3FFFB6")+
+    ggtitle('Sigma Publicated')
+
+    p_all <- grid.arrange(Intercept, Sigma, InterceptPub, SigmaPub, top='Prior-posterior update check')
+    ggsave('pp_update.png',
+           p_all,width=17,height=17,units='cm')
+```
+
+## Simulate publication bias
+(only some of the studies you simulate are likely to be published, which?), the effect of publication bias on your estimates (re-run the model on published studies, assess the difference), and discuss what this implies for your model. remember to use at least one plot to visualize your results. 
+```{r Publication bias}
+# running the subset
+es1p1_pub <- update(es1p1fit,newdata=subset(d,Published==1))
+#es1p1_pubpos <- update(es1p1fit,newdata=subset(d,PublishedPos==1))
+
+Posterior_m1_pub <- as_draws_df(es1p1_pub)
+
+InterceptPub <- ggplot(Posterior_m1_pub)+
+  geom_histogram(aes(b_Intercept),
+                   fill='yellow',
+                   color='yellow',
+                   alpha=0.3,
+                   bins=50
+                   )+
+    geom_histogram(aes(prior_Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3,
+                   bins=50
+                   )+
+    ggtitle('Intercept Publicated')
+
+  
+SigmaPub <- ggplot(Posterior_m1)+
+    geom_histogram(aes(prior_sd_Study),
+                   fill='yellow',
+                   color='yellow',
+                   alpha=0.3,
+                   bins=50
+                   )+
+    geom_histogram(aes(sd_Study__Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3,
+                   bins=50
+                   )+
+    ggtitle('Sigma Publicated')
+    p_all <- grid.arrange(Intercept, Sigma, InterceptPub, SigmaPub, top='Prior-posterior update check')
+    ggsave('pp_update_m1.png',
+           p_all)
+```
+
+
+## BONUS
+question: do a power/precision analysis: w this kind of sample sizes (participants) how many studies would you need to acquire good precision (e.g. .1 sd in the pop level estimate)
+```{r Precision/sensitivity analysis}
+# from Kurz and ida
+mu_asd <- log(1.5)
+mu_td <- log(1.5)
+sigma_asd <- log(1.5)-log(1.5-0.5)
+sigma_td <- log(1.5)-log(1.5-0.3)
+
+#Change
+  #ASD, has a spread of 0.4 and mean of 0.1, when these values are in.
+  mu_visit_asd <- 0.1    #0.6  
+  sigma_visit_asd <- 0.07#0.4
+
+  #TD, has a spread of 0.2 and mean of 0.2, when these values are in.
+  mu_visit_td <- 0.2     #0.4
+  sigma_visit_td <- 0.03 #0.2
+error <- 0.01          #0.2
+
+
+s_d <- function(n, visit, mu_asd, mu_td, sigma_asd, sigma_td, error){
+  mu_asd <- log(1.5)
+  mu_td <- log(1.5)
+  sigma_asd <- log(1.5)-log(1.5-0.5)
+  sigma_td <- log(1.5)-log(1.5-0.3)
+  error <- 0.01          #0.2
+
+  s_df <- tibble(expand.grid(ID=seq(n),
+                             diagnosis= c("asd", "td"),
+                             visit = seq(visit))) %>%  
+    mutate(ID = ifelse(diagnosis == "td", ID + (n*2), ID), 
+           individualintercept = NA, 
+           individualslope = NA, 
+           MLU = NA)
+  
+  for (i in seq(s_df$ID)) {
+    #Assigning individual intercept
+    s_df$individualintercept[s_df$ID == i & s_df$diagnosis == "asd"] <- rnorm(1, mu_asd, sigma_asd)
+    s_df$individualintercept[s_df$ID == i & s_df$diagnosis == "td"] <- rnorm(1, mu_td, sigma_td)
+    
+    #Assigning individual slope
+    s_df$individualslope[s_df$ID == i & s_df$diagnosis == "asd"] <- rnorm(1, mu_visit_asd, sigma_visit_asd)
+    s_df$individualslope[s_df$ID == i & s_df$diagnosis == "td"] <- rnorm(1, mu_visit_td, sigma_visit_td)
+  }
+  
+  for (i in seq(nrow(s_df))){
+  s_df$MLU[i] <- exp(rnorm(1, (s_df$individualintercept[i] + s_df$individualslope[i] * (s_df$visit[i]-1)), error))
+                  }
+  
+  
+  
+  return(s_df)
+}
+
+d <- s_d(n, visit, mu_asd, mu_td, sigma_asd, sigma_td, error)
+
+
+n_sim <- 25 
+# Sabrina had an idea for a function with rnorm() and seq() to pick out randome numbers
+
+# here's the main event!
+pacman::p_load(purrr)
+t1 <- Sys.time()
+
+#30 in each condition
+s30_3 <-
+  tibble(seed = 1:n_sim) %>% 
+  mutate(d = map(seed, s_d, n = 30)) %>% 
+  mutate(fit = map2(d, seed, ~update(mlu3p3fit, newdata = .x, seed = .y,iter=100)))
+t2 <- Sys.time()
+t2-t1
+
+parameters <-
+  s30_3 %>% 
+  mutate(estimate = map(fit, ~ brms::fixef(.) %>% 
+                           data.frame() %>% 
+                           tibble::rownames_to_column("parameter"))) %>% 
+  tidyr::unnest(estimate)
+
+parameters %>% 
+  select(-d, -fit) %>% 
+  filter(parameter == "asd") %>% 
+  head()
+
+ pre_mlu3_30_asd <-
+  parameters %>% 
+  filter(parameter = "diagnosis:visit") %>% 
+  ggplot(aes(x = seed, y = Estimate, ymin = Q2.5, ymax = Q97.5)) +
+  geom_hline(yintercept = c(0, .5), color = "white") +
+  geom_pointrange(fatten = 1/2) +
+  labs(x = "seed (i.e., simulation index)",
+       y = expression(beta[1]))+
+   geom_abline(intercept=0.36,slope=0,color="#3FFFB6")
+
+#50 in each condition
+s50_3 <-
+  tibble(seed = 1:n_sim) %>% 
+  mutate(d = map(seed, s_d, n = 50)) %>% 
+  mutate(fit = map2(d, seed, ~update(mlu3p3fit, newdata = .x, seed = .y,iter=100)))
+t2 <- Sys.time()
+t2-t1
+
+parameters <-
+  s50_3 %>% 
+  mutate(estimate = map(fit, ~ brms::fixef(.) %>% 
+                           data.frame() %>% 
+                           tibble::rownames_to_column("parameter"))) %>% 
+  tidyr::unnest(estimate)
+
+parameters %>% 
+  select(-d, -fit) %>% 
+  filter(parameter == "asd") %>% 
+  head()
+
+ pre_mlu3_50_asd <-
+  parameters %>% 
+  filter(parameter = "diagnosis:visit") %>% 
+  ggplot(aes(x = seed, y = Estimate, ymin = Q2.5, ymax = Q97.5)) +
+  geom_hline(yintercept = c(0, .5), color = "white") +
+  geom_pointrange(fatten = 1/2) +
+  labs(x = "seed (i.e., simulation index)",
+       y = expression(beta[1]))+
+   geom_abline(intercept=0.36,slope=0,color="#3FFFB6")
+
+#100
+s100_3 <-
+  tibble(seed = 1:n_sim) %>% 
+  mutate(d = map(seed, s_d, n = 100)) %>% 
+  mutate(fit = map2(d, seed, ~update(mlu3p3fit, newdata = .x, seed = .y,iter=100)))
+t2 <- Sys.time()
+t2-t1
+
+parameters <-
+  s100_3 %>% 
+  mutate(estimate = map(fit, ~ brms::fixef(.) %>% 
+                           data.frame() %>% 
+                           tibble::rownames_to_column("parameter"))) %>% 
+  tidyr::unnest(estimate)
+
+parameters %>% 
+  select(-d, -fit) %>% 
+  filter(parameter == "asd") %>% 
+  head()
+
+ pre_mlu3_100_asd <-
+  parameters %>% 
+  filter(parameter = "diagnosis:visit") %>% 
+  ggplot(aes(x = seed, y = Estimate, ymin = Q2.5, ymax = Q97.5)) +
+  geom_hline(yintercept = c(0, .5), color = "white") +
+  geom_pointrange(fatten = 1/2) +
+  labs(x = "seed (i.e., simulation index)",
+       y = expression(beta[1]))+
+   geom_abline(intercept=0.36,slope=0,color="#3FFFB6")
+
+
+  
+precision <- gridExtra::grid.arrange(pre_mlu3_30_asd,pre_mlu3_50_asd,pre_mlu3_100_asd,top='Sample size 30 versus 50 versus 100')
+ggsave('precision.png',precision)
+```
+
+```{r power analysis}
+parameters %>% 
+  filter(parameter == "diagnosisasd:visit") %>% 
+  mutate(check = ifelse(Q2.5 > 0, 1, 0)) %>% 
+  summarise(power = mean(check))
+```
+
+
+
+# Question 2
+
+What is the current evidence for distinctive vocal patterns in schizophrenia? 
+Use the data from Parola et al (2020) - https://www.dropbox.com/s/0l9ur0gaabr80a8/Matrix_MetaAnalysis_Diagnosis_updated290719.xlsx?dl=0 - focusing on pitch variability (PITCH_F0SD).
+
+## Describe the data available (studies, participants).
+```{r}
+#load data
+#install.packages("readxl")
+library("readxl")
+df <- read_excel("Matrix_MetaAnalysis_Diagnosis_updated290719.xlsx")
+
+#describe data
+#Hmisc::describe(df)
+
+# do something with pitch mean
+PitchMean <- escalc("SMD", #claculate standardized mean difference (Hedges G)
+                           # (m1i - m2i) / sdpi
+                           # sdpi = sqrt(((n1i-1)*sd1i^2 + (n2i-1)*sd2i^2) / (n1i+n2i-2))
+                           # For measure="SMD", the positive bias in the standardized mean difference (i.e., in a Cohen's d value) is automatically corrected for within the function, yielding Hedges' g (Hedges, 1981).
+                    n1i=SAMPLE_SIZE_HC,    n2i=SAMPLE_SIZE_SZ,
+                    m1i=PITCH_F0SD_HC_M,   m2i=PITCH_F0SD_SZ_M,
+                    sd1i=PITCH_F0SD_HC_SD, sd2i=PITCH_F0SD_SZ_SD,
+                    data = df)
+#Clean dataframe
+#PitchMean <- subset(PitchMean,select=-c(CohenD,SE_HC_SZ,PooledSD))
+
+
+PitchMean <- PitchMean %>% 
+  subset(select=c(Article,Authors,ArticleID,StudyID,Year_publication,SAMPLE_SIZE_HC,SAMPLE_SIZE_SZ,PITCH_F0SD_HC_M,PITCH_F0SD_SZ_M,PITCH_F0SD_HC_SD,PITCH_F0SD_SZ_SD,yi,vi)) %>% 
+   rename(EffectSize=yi) %>% 
+   rename(SamplingVariance=vi)
+
+View(PitchMean)
+
+#calculate effectsizes
+# pacman::p_load(effsize)
+# df <- df %>% 
+#   mutate(CohenD=NA)
+# 
+# PitchMean <- PitchMean %>% 
+#   mutate(CohenD=NA) %>% 
+#   mutate(SE_HC_SZ=NA) %>% 
+#   mutate(PooledSD=NA)
+# 
+# pm <- na.omit(PitchMean, cols=c("PITCH_F0SD_HC_M","PITCH_F0SD_SZ_M","PITCH_F0SD_SZ_SD","PITCH_F0SD_HC_SD"))
+# #Tried to make a loop
+# 
+# for (i in seq(PitchMean$StudyID)){
+#   #must not calculate for na 
+#   if (is.na(PitchMean$PITCH_F0SD_HC_M[i]) |is.na(PitchMean$PITCH_F0SD_SZ_M[i]) | is.na(PitchMean$PITCH_F0SD_SZ_SD[i]) | is.na(PitchMean$PITCH_F0SD_HC_SD[i] )){
+#     PitchMean$PooledSD[i] <- NA
+#     PitchMean$CohenD[i] <- NA
+#     PitchMean$SE_HC_SZ[i] <- NA
+#     } else {
+#     # calculate pooled standard deviation
+#     PitchMean$PooledSD[i] <- sqrt((PitchMean$PITCH_F0SD_HC_SD[i]^2 + PitchMean$PITCH_F0SD_SZ_SD[i]^2) / 2)
+#     #calculate Cohens D see slides 28 week 7
+#     PitchMean$CohenD[i] <- (PitchMean$PITCH_F0SD_HC_M[i] - PitchMean$PITCH_F0SD_SZ_M[i] / PooledSD)
+#     #calculate standard error see slides 28 week 7
+#     PitchMean$SE_HC_SZ[i] <- (PitchMean$PITCH_F0SD_HC_M[i] + PitchMean$PITCH_F0SD_SZ_M[i]) / (PitchMean$PITCH_F0SD_HC_M[i] * PitchMean$PITCH_F0SD_SZ_M[i]) + PitchMean$CohenD[i] / (2 * (PitchMean$PITCH_F0SD_HC_M[i] + PitchMean$PITCH_F0SD_SZ_M[i] - 2)) * ((PitchMean$PITCH_F0SD_HC_M[i] + PitchMean$PITCH_F0SD_SZ_M[i]) / (PitchMean$PITCH_F0SD_HC_M[i] + PitchMean$PITCH_F0SD_SZ_M[i] - 2))
+#     }
+#   }
+# 
+# for (i in seq(PitchMean$StudyID)){
+#       PitchMean$CohenD[i] <- (PitchMean$PITCH_F0SD_HC_M[i] - PitchMean$PITCH_F0SD_SZ_M[i] / PooledSD)
+# 
+# }
+#   CohenD   <- (PitchMean$PITCH_F0SD_HC_M - PitchMean$PITCH_F0SD_SZ_M / PooledSD) 
+#   
+# for (i in seq(PitchMean$StudyID)){
+#   PitchMean$SE_HC_SZ[i] <- (PitchMean$PITCH_F0SD_HC_M[i] + PitchMean$PITCH_F0SD_SZ_M[i]) / (PitchMean$PITCH_F0SD_HC_M[i] * PitchMean$PITCH_F0SD_SZ_M[i]) + PitchMean$CohenD[i]/(2*(PitchMean$PITCH_F0SD_HC_M[i] + PitchMean$PITCH_F0SD_SZ_M[i] - 2)) * ((PitchMean$PITCH_F0SD_HC_M[i] + PitchMean$PITCH_F0SD_SZ_M[i])/(PitchMean$PITCH_F0SD_HC_M[i] + PitchMean$PITCH_F0SD_SZ_M[i] - 2))
+# }
+
+Hmisc::describe(PitchMean_na)
+```
+
+## Using the model from question 1 analyze the data, visualize and report the findings: population level effect size; how well studies reflect it; influential studies, publication bias. 
+```{r formula}
+#formula
+cd1 <- brms::bf(EffectSize | se(SamplingVariance) ~ 1 +(1|StudyID)) #q why the se()?
+cd2 <- brms::bf(EffectSize | se(SamplingVariance) ~ 1 +(1|Article)) #q why the se()?
+
+```
+
+```{r prior}
+#prior full
+# Setting priors
+cdp1 <- c(
+  prior(normal(0,0.3),class=Intercept),
+  prior(normal(0,0.2),class=sd))
+
+cd1p1 <- 
+  brm(
+    cd1, 
+    data = PitchMean,
+    family = gaussian,
+    prior = cdp1,  
+    sample_prior = "only", 
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    # file = "cd1p1",
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+      stan_model_args=list(stanc_options = list("O1"))
+)
+
+cd2p1 <- 
+  brm(
+    cd2, 
+    data = PitchMean,
+    family = gaussian,
+    prior = cdp1,  
+    sample_prior = "only", 
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    # file = "cd1p1",
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+      stan_model_args=list(stanc_options = list("O1"))
+)
+
+```
+
+```{r prior check}
+#pp checking the priors - could look better, but fine i guess
+ cd_pp1 <- pp_check(cd1p1, ndraws = 100)+labs(title='Metaanalysis: Prior')
+ggsave('prior metaanalysis.png',cd_pp1)
+```
+
+```{r fit model}
+cd1p1fit <- 
+  brm(
+    cd1, 
+    data = PitchMean,
+    save_pars = save_pars(all = TRUE),
+    family = gaussian,
+    prior = cdp1,  
+    sample_prior = T, 
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    # file = "cd1p1fit",
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+        stan_model_args=list(stanc_options = list("O1"))
+)
+
+cd2p1fit <- 
+  brm(
+    cd2, 
+    data = PitchMean,
+    save_pars = save_pars(all = TRUE),
+    family = gaussian,
+    prior = cdp1,  
+    sample_prior = T, 
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    # file = "cd1p1fit",
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+        stan_model_args=list(stanc_options = list("O1"))
+)
+```
+
+```{r updating model}
+cdp1udp <- update(cd1p1fit)
+
+cd2p1upd <- update(cd2p1fit)
+```
+```{r posterior}
+pp_check(cdp1udp, ndraws = 100) + labs(title="Posterior predictive check, real")
+```
+
+
+```{r Update plots}
+variables(cdp1udp)
+Posterior_cd <- as_draws_df(cdp1udp)
+
+cdI <- ggplot(Posterior_cd)+
+  geom_density(aes(b_Intercept),
+                   fill='yellow',
+                   color='yellow',
+                   alpha=0.3
+                   )+
+  geom_density(aes(prior_Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3
+                   )+
+  geom_vline(xintercept=0.4,color="#3FFFB6")+
+  ggtitle('Intercept')
+
+  
+cdS <- ggplot(Posterior_cd)+
+    geom_density(aes(prior_sd_StudyID),
+                   fill='yellow',
+                   color='yellow',
+                   alpha=0.3
+                   )+
+    geom_density(aes(sd_StudyID__Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3
+                   )+
+    geom_vline(xintercept=0.4,color="#3FFFB6")+
+    ggtitle('Sigma')
+
+cdplot <- grid.arrange(cdI, cdS, top='Prior-posterior update check for Empirical data')
+    ggsave('cd_update.png',
+           cdplot)
+```
+
+```{r}
+plot(conditional_effects(cdp1udp), points = T)
+summary(cdp1udp)
+```
+# IDA
+```{r}
+#uncertainty of the slope
+as_draws_df(cdp1udp)
+#extract the estimated deviation of each study’s “true” effect size from the pooled effect
+ranef(cd1p1fit)
+
+#extract posterior samples for specified parameters
+post.samples <- posterior_samples(cdp1udp, c("^b", "^sd"))
+names(post.samples)
+
+names(post.samples) <- c("smd", "tau")
+
+#plot it
+p3 <- ggplot(aes(x = smd), data = post.samples) +
+  geom_density(fill = "lightblue",                # set the color
+               color = "lightblue", alpha = 0.7) +  
+   geom_vline(xintercept =  mean(post.samples$smd)) +        # add point at mean
+
+  labs(x = expression(italic(SMD)),
+       y = element_blank()) +
+  theme_minimal()
+
+p4 <- ggplot(aes(x = tau), data = post.samples) +
+  geom_density(fill = "lightgreen",               # set the color
+               color = "lightgreen", alpha = 0.7) +  
+  geom_vline(xintercept =  mean(post.samples$tau)) +        # add point at mean
+    labs(x = expression(tau),
+       y = element_blank()) +
+  theme_minimal()
+
+grid.arrange(p3, p4)
+
+```
+```{r}
+smd.ecdf <- ecdf(post.samples$smd)
+smd.ecdf(0.3)
+
+#We see that with 0%, the probability of our pooled effect being smaller than 0.30 is very, very low. Assuming the cut-off is valid, this would mean that the overall effect of the intervention we find in this meta-analysis is very likely to be meaningful.
+
+# [1] 0.8625
+```
+
+```{r forest plot}
+pacman::p_load(ggridges,glue,stringr,forcats)
+
+study.draws <- spread_draws(cd1p1fit, r_StudyID[StudyID,], b_Intercept) %>% 
+  mutate(b_Intercept = r_StudyID + b_Intercept)
+Hmisc::describe(pooled.effect.draws)
+
+
+pooled.effect.draws <- spread_draws(cd1p1fit, b_Intercept) %>% 
+  mutate(StudyID = "Pooled Effect")
+
+study.draws$StudyID <- as.integer(study.draws$StudyID)
+pooled.effect.draws <- pooled.effect.draws %>% 
+  rename('Pooled Effect' = 'StudyID')
+
+
+forest.data <- bind_rows(study.draws, 
+                         pooled.effect.draws)# %>% 
+   #ungroup() %>%
+   #mutate(Article = str_replace_all(Article, "[.]", " ")) %>% 
+   #mutate(Article = reorder(Article, b_Intercept))
+
+
+forest.data.summary <- group_by(forest.data, StudyID) %>% 
+  mean_qi(b_Intercept)
+
+#Articles
+pacman::p_load(ggridges,glue,stringr,forcats)
+
+study.draws <- spread_draws(cd2p1fit, r_Article[Article,], b_Intercept) %>% 
+  mutate(b_Intercept = r_Article + b_Intercept)
+Hmisc::describe(pooled.effect.draws)
+
+
+pooled.effect.draws <- spread_draws(cd1p1fit, b_Intercept) %>% 
+  mutate(Article = "Pooled Effect")
+
+study.draws$Article <- as.integer(study.draws$Article)
+pooled.effect.draws <- pooled.effect.draws %>% 
+  rename('Pooled Effect' = 'Article')
+
+
+forest.data <- bind_rows(study.draws, 
+                         pooled.effect.draws) %>% 
+   ungroup() %>%
+   mutate(Article = str_replace_all(Article, "[.]", " ")) %>% 
+   mutate(Article = reorder(Article, b_Intercept))
+
+
+forest.data.summary <- group_by(forest.data, Article) %>% 
+  mean_qi(b_Intercept)
+```
+
+```{r}
+ggplot(aes(b_Intercept, StudyID 
+          #relevel(StudyID,# "Pooled Effect", 
+          #        after = Inf)
+          ), 
+       data = forest.data) +
+  
+  # Add vertical lines for pooled effect and CI
+  geom_vline(xintercept = fixef(cd1p1fit)[1, 1], 
+             color = "grey", size = 1) +
+  geom_vline(xintercept = fixef(cd1p1fit)[1, 3:4], 
+             color = "grey", linetype = 2) +
+  geom_vline(xintercept = 0, color = "black", 
+             size = 1) +
+  
+  # Add densities
+  geom_density_ridges(fill = "blue", 
+                      rel_min_height = 0.01, 
+                      col = NA, scale = 1,
+                      alpha = 0.8) +
+  geom_pointintervalh(data = forest.data.summary, 
+                      size = 1) +
+  
+  # Add text and labels
+  geom_text(data = mutate_if(forest.data.summary, 
+                             is.numeric, round, 2),
+    aes(label = glue("{b_Intercept} [{.lower}, {.upper}]"), 
+        x = Inf), hjust = "inward") +
+  labs(x = "Standardized Mean Difference", # summary measure
+       y = element_blank()) +
+  theme_minimal()
+```
+
+
+```{r}
+#Article
+ggplot(aes(b_Intercept, Article, 
+          relevel(Article, "Pooled Effect", 
+                  after = Inf)
+          ), 
+       data = forest.data) +
+  
+  # Add vertical lines for pooled effect and CI
+  geom_vline(xintercept = fixef(cd2p1fit)[1, 1], 
+             color = "grey", size = 1) +
+  geom_vline(xintercept = fixef(cd2p1fit)[1, 3:4], 
+             color = "grey", linetype = 2) +
+  geom_vline(xintercept = 0, color = "black", 
+             size = 1) +
+  
+  # Add densities
+  geom_density_ridges(fill = "blue", 
+                      rel_min_height = 0.01, 
+                      col = NA, scale = 1,
+                      alpha = 0.8) +
+  geom_pointinterval(data = forest.data.summary, 
+                      size = 1,
+                     xmin=-4,
+                     xmax=2,6) #+
+  
+  # Add text and labels
+  geom_text(data = mutate_if(forest.data.summary, 
+                             is.numeric, round, 2),
+    aes(label = glue("{b_Intercept} [{.lower}, {.upper}]"), 
+        x = Inf), hjust = "inward") +
+  labs(x = "Standardized Mean Difference", # summary measure
+       y = element_blank()) +
+  theme_minimal()
+```
+
+
+```{r}
+#pacman::p_load(forestplot)
+forest.data.summary |> 
+  forestplot(labeltext = c(StudyID, b_Intercept), 
+             clip = c(0.1, 2.5), 
+             vertices = TRUE,
+             xlog = TRUE) |> 
+  fp_add_lines(h_3 = gpar(lty = 2), 
+               h_11 = gpar(lwd = 1, columns = 1:3, col = "#000044")) |> 
+  fp_set_style(box = "royalblue",
+               line = "darkblue",
+               summary = "royalblue",
+               align = "lrrr",
+               hrz_lines = "#999999")  |> 
+  fp_add_header(study = c("", "Study"),
+                Estimates = c("Effect size estimate", "Intercept") |> 
+                  fp_align_center()
+                )
+  fp_append_row(mean  = 0.1879,
+                lower = 0.0191,
+                upper = 0.3603)
+                #study = "Summary",
+                #OR = "0.53",
+                #is.summary = TRUE)
+```
+
+```{r}
+pacman::p_load(meta)
+#create forest plot
+ggplot(data = forest.data.summary, aes(y=StudyID, x=b_Intercept, xmin=.lower, xmax=.upper)) +
+  geom_point() + 
+
+  geom_errorbar() +
+ # scale_y_continuous(breaks=1:n(forest.data.summary$StudyID), labels=forest.data.summary$StudyID) +
+  labs(title='Effect Size by Study', x='Effect Size', y = 'StudyID') +
+  geom_vline(xintercept=0, color='black', linetype='dashed', alpha=.5) +
+  theme_minimal()
+ggsave('forestplot.png')
+```
+
+## BONUS question: 
+assess the effect of task on the estimates (model comparison with baseline model)
+```{r}
+
+```
+
+
+# Titanic
+```{r}
+pacman::p_load(tidyverse, boot, lmerTest, caret, e1071, car, gridExtra, lme4, modelr, dplyr, stringr, ggeffects, sigmoid, DescTools) #Desc Tools DescTools
+pacman::p_load(caret)
+
+titanic <- read.csv('titanic.csv')
+```
+-	Survived: a numeric value indicating whether each participant survived the incident or not
+-	Pclass: a currently numeric variable with levels 1 to 3 for 1st, 2nd, and 3rd class
+-	Name: a character variable with passenger names
+-	Sex: a character variable with two levels (male/female)
+-	Age: a numeric value indicating passenger age
+-	[Siblings/Spouses Aboard: disregard]
+-	[Parents/Children Aboard: disregard]
+-	[Fare: disregard]
+
+```{r clean data}
+titanic <- subset(titanic, select=-c(Siblings.Spouses.Aboard, Parents.Children.Aboard, Fare, Name))
+titanic <- subset(titanic,select=-c(Name))
+titanic <- titanic %>% 
+  mutate(Survived=as.factor(Survived)) %>% 
+  mutate(Pclass=as.factor(Pclass)) %>% 
+  mutate(Sex=as.character(Sex)) %>% 
+  mutate(Age=as.numeric(Age))
+```
+
+-	Predict the survival rate of the passengers on the RMS Titanic
+o	by age of the passengers,
+o	their gender, 
+o	and which class they were travelling on.
+
+model
+survival ~ pclass, gender, age
+
+-	Include a table with the summary output of the model,
+-	and discuss the results in prose (i.e., no R code allowed).
+o	The description should be detailed enough to make your analysis reproducible for people that do not have access to your R code. 
+-	Please also provide the probability (read: not the value on the log-odds scale) of surviving for both levels of the variable Sex, for all three levels of the variable Pclass, and for the median age of males and females.
+-	Include up to two plots to describe the data.
+
+Bonus: Divide the data set into training and test sets, and test the predictive accuracy of your logistic model.
+
+```{r}
+total_tita <- glm(Survived ~ Age + Sex + Pclass, data=titanic, family=binomial)
+summary(total_tita)
+
+m <- aggregate(titanic$Age,         # Median by group
+          list(titanic$Sex),
+          median)
+summary(total_tita)
+
+#interaction model
+int_ti_1 <- glm(Survived ~ Pclass * Sex * Age, data=titanic, family=binomial)
+int_ti_2 <- glm(Survived ~ Pclass * Sex + Age, data=titanic, family=binomial)
+int_ti_3 <- glm(Survived ~ Pclass + Sex * Age, data=titanic, family=binomial)
+int_ti_4 <- glm(Survived ~ Pclass * Age + Sex, data=titanic, family=binomial)
+int_ti_5 <- glm(Survived ~ Sex + Age * Pclass, data = titanic, family=binomial)
+summary(int_ti_1)
+summary(int_ti_2)
+summary(int_ti_3)
+summary(int_ti_4)
+summary(int_ti_5)
+
+DescTools::PseudoR2(int_ti_1,c('McFadden'))
+DescTools::PseudoR2(int_ti_2,c('McFadden'))
+DescTools::PseudoR2(total_tita,c('McFadden'))
+DescTools::PseudoR2(int_ti_3,c('McFadden'))
+DescTools::PseudoR2(int_ti_4,c('McFadden'))
+DescTools::PseudoR2(int_ti_5,c('McFadden'))
+
+```
+
+```{r}
+probability <- titanic %>% 
+  group_by(Sex,Pclass) %>% 
+  summarise(median_age=median(Age)) %>% 
+probability
+
+#tryoutt <- titanic_df %>% 
+  #group_by(Sex,Pclass) %>%  #summarise(people=sum(Pclass))
+#tryoutt
+
+#inv.logit(intercept (- male, (if it is male)) + class + interaction effect+ (age*median age))
+
+survival_prob <- c(
+  inv.logit(4.87731+(-0.03821*35)),               #female first class
+  inv.logit(4.87731-1.21541+(-0.03821*28.5)),     #female second class
+  inv.logit(4.87731-4.03456+(-0.03821*22)),         #female third class
+  inv.logit(4.87731-3.86469+(-0.03821*41.5)),        #male first class
+  inv.logit(4.87731-3.86469-1.21541-0.40680+(-0.03821*30)),  #male second class
+  inv.logit(4.87731-3.86469-4.03456-2.1244+(-0.03821*25))   #male third class
+  )
+  
+as.tibble(survival_prob)
+survival_probalitity <- bind_cols(probability,survival_prob)
+survival_probalitity
+survival_probalitity %>% 
+  rename(surv_prob=...4)
+
+
+#Plot to describe data
+new_m <- mutate(titanic, Survived = if_else(titanic$Survived == "1", "No", "Yes"))
+titanic$Survived <- mutate(as.factor(titanic$Survived))
+ggplot(new_m, aes(x=Survived, y=Pclass, color = Sex)) + geom_jitter(width = .4, height = .4) + ggtitle("Passenger survival")
+
+```
+
+
+```{r}
+try <- titanic %>% 
+  group_by(Survived=='1') %>% 
+  summarise(Sex)
+#545 died
+#342 lived
+```
+
+
+## Training set
+```{r}
+pacman::p_load(caret)
+set.seed(3456)
+trainIndex <- createDataPartition(titanic$Survived,
+                                  p = .6, #we create a partition with 60%
+                                  list = FALSE, #not a list but a data.frame
+                                  times = 1) #Times we split = 1 time. 
+Train <- titanic[ trainIndex,] #We subset iris_subset by our indexing variable trainIndex
+Test <- titanic[-trainIndex,] #Eve rything that is not in our trainIndex/Train will be in Test.
+#titanic <- titanic %>% 
+ # mutate(Survived=as.factor(Survived)) %>% 
+  #mutate(Survived=='0'='2')
+```
+
+```{r}
+#Train the model on our Train data set.
+
+model_train <- glm(Survived ~ Pclass * Sex + Age, data=titanic, family=binomial)
+```
+
+```{r}
+#Predict based on your trained model and Test df partition. type = "reponse" because we're working with logistic regression. This changes the outcome to be probabilities and not log-odds. 
+Test$y_hat_prop <-  predict(model_train, Test, type = "response")
+str(Test$y_hat_prop)
+```
+```{r}
+#Based on our Quantizer function (see slides from class 10) we predict Versiscolor or Virginica. 
+Test <- Test %>% 
+  mutate(y_hat = if_else(y_hat_prop < 0.5, "1","0")) %>% 
+  mutate(y_hat = as.factor(y_hat)) %>% #Turn variable into a factor
+  mutate(Survived=as.factor(Survived))
+str(Test$y_hat)
+```
+```{r}
+confusionMatrix(Test$Survived, Test$y_hat) #Output the confusion matrix. 
+
+```
+
+
+# Code from [week 8 slides](obsidian://open?vault=Sara&file=AU%2FCognitive%20Science%2F3.%20semester%2FMethods%203%2FLectures%2FM3_W8_Classification.pdf)
+
+two participants (schizophrenia and control) with 10 trials each
+effect of 0.25 in Cohens d (pitch mean from M-A)
+We have an individual variation of 1 (a given pair will vary of circa 1 sd from the population level effect size)
+True difference for the pair: rnorm(1, 0.25, 1), e.g. 0.42
+
+We then need to measure the values for each member of the pair :
+
+Schizophrenia mean: 0.21 |   Control mean:  -0.21
+```{r simulate #13}
+#sample 10 trials
+schi_mu <- 0.21
+cont_mu <- -0.21
+trial_sd <- 0.5 #the average variation between trials)
+error <- 0.2
+
+#repeat 10 times
+schizophrenia <- rnorm(1,rnorm(1,schi_mu,trial_sd),error)
+control <- rnorm(1,rnorm(1,cont_mu,trial_sd),error)
+
+# define population size
+n <- 100
+trials <- 10
+
+# define different effect sizes: 6 from m-a, 4 just random noise
+InformedEffectMean <- c(0.25,-0.55,-0.75,-1.26,0.05,1.89,0,0,0,0)
+SkepticEffectMean <- rep(0,10)
+
+#define individual variability
+indi_sd <- 1
+#trial_sd
+#error
+
+#for each pair of participants we need to identify the true effect size for variable
+for (i in seq(10)){
+  temp_informed <- tibble(
+    ID=seq(n),
+    TrueEffect=rnorm(n,InformedEffectMean[i],indi_sd),
+    Variable=paste0("v",i)
+  )
+  temp_skeptic <- tibble(
+    ID=seq(n),
+    rueEffect=rnorm(n,SkepticEffectMean[i],indi_sd),
+    Variable=paste0("v",i)
+  )
+  if (i==1){
+    d_informed_true <- temp_informed
+    d_skeptic_true <- temp_skeptic
+  } else {
+    d_informed_true <- rbind(d_informed_true,temp_informed)
+    d_skeptic_true <- rbind(d_skeptic_true,temp_skeptic)
+  }
+}
+```
+
+```{r slide 15}
+#create tibble with one row per trial
+d_trial <- tibble(expand_grid(ID=seq(n),Trial=seq(trials),Group=c("Schizophrenia","Control")))
+
+d_informed <- merge(d_informed_true,d_trial)
+d_skeptic <- merge(d_skeptic_true,d_trial)
+
+for (i in seq(nrow(d_informed))){
+  d_informed$measurement[i] <- ifelse(d_informed$Group[i]=="Schizophrenia",
+                                      rnorm(1, rnorm(1, d_informed$TrueEffect[i]/2, trial_sd), error),
+                                      rnorm(1, rnorm(1, -d_informed$TrueEffect[i]/2, trial_sd), error)
+                                      )
+  d_skeptic$measurement[i] <- ifelse(d_skeptic$Group[i]=="Schizophenia",
+                                     rnorm(1, rnorm(1, d_informed$TrueEffect[i]/2, trial_sd), error),
+                                      rnorm(1, rnorm(1, -d_informed$TrueEffect[i]/2, trial_sd), error)
+                                      )
+}
+
+d_informed_wide <- d_informed %>% 
+  mutate(TrueEffect=NULL) %>% 
+  pivot_wider(names_from=Variable, values_from=measurement)
+d_skeptic_wide <- d_skeptic %>% 
+  mutate(TrueEffect=NULL) %>% 
+  pivot_wider(names_from=Variable, values_from=measurement)
+```
+
+```{r test data slide 21}
+TestID <- sample(seq(n),20)
+
+train_informed <- d_informed_wide %>% 
+  subset(!(ID %in% TestID))
+test_informed <- d_informed_wide %>% 
+  subset(ID %in% TestID)
+```
+
+```{r sldie 24 preprocessing}
+m1 <- mean(train_informed$v1)
+sd1 <- sd(train_informed$v1)
+train_informed <- train_informed %>% 
+  mutaute(v1_s=(v1-m1)/sd1)
+
+test_informed <- test_informed %>% 
+  mutaute(v1_s=(v1-m1)/sd1)
+
+```
+
+##check for missing data
+
+```{r slide 25 tidymodels}
+pacman::p_load(tidymodels)
+
+rec_informed <- train_informed %>% 
+  recipe(Group ~ .) %>%  #defines outcome
+  step_scale(all_numeric()) %>% #scales numeric prediction
+  step_center(all_numeric()) %>%  #center numeric predictors
+  prep(training=train_informed,retain=TRUE)
+
+rec_skeptic <- train_skeptic %>% 
+  recipe(Group ~ .) %>%  #defines outcome
+  step_scale(all_numeric()) %>% #scales numeric prediction
+  step_center(all_numeric()) %>%  #center numeric predictors
+  prep(training=train_skeptic,retain=TRUE)
+
+# Apply recipe to train and test
+train_informed_s <- juice(rec_informed)
+test_informed_s <- bake(rec_informed, new_data=test_informed)
+```
+
