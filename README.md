@@ -1,7 +1,7 @@
 # BigFiveStudyGroup
 Study group material from 3. semester Cognitive Science at AU (2022)
 
-People: Freddy Wullf, Ida Brøcker, Maria Olsen, Sabrina Zaki & Sara Kristensen
+People: [Freddy Wullf](https://github.com/FrederiekeW), [Ida Brøcker](https://github.com/IdaElmBro), [Maria Olsen](https://github.com/Mujemula), [Sabrina Zaki](https://github.com/sabszh) & [Sara Kristensen](https://github.com/MajestiCupcake)
 
 
 ## Table of Content
