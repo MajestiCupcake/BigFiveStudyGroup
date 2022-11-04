@@ -140,7 +140,6 @@ define sequence experiment
 	run end_of_experiment always
 
 define loop experimental_loop
-	set source_file ""
 	set source table
 	set skip 0
 	set repeat 1
