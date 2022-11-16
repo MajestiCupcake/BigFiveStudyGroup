@@ -8,6 +8,7 @@ People: [Freddy Wullf](https://github.com/FrederiekeW), [Ida Brøcker](https://g
 1. Methods portfolio handin's from the group members
   - [A1](https://github.com/MajestiCupcake/BigFiveStudyGroup/tree/main/Methods%20portfolio/A1)
   - [A2](https://github.com/MajestiCupcake/BigFiveStudyGroup/tree/main/Methods%20portfolio/A2)
+  - [A3](https://github.com/MajestiCupcake/BigFiveStudyGroup/tree/main/Methods%20portfolio/A3)
 
 2. Perception and Action course material
   - [Mousetracking](https://github.com/MajestiCupcake/BigFiveStudyGroup/tree/main/PercAct/Mousetracking)
