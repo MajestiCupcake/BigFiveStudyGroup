@@ -1,0 +1,1761 @@
+---
+title: "A3"
+author: "Sara"
+date: "2022-11-02"
+output: html_document
+--- 
+#open w8 and w10 for slides
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+setwd('.')
+
+pacman::p_load(
+  tidyverse,
+  tidybayes,
+  brms,
+  bayesplot,
+  dplyr,
+  ggplot2,
+  gridExtra,
+  viridis,
+  tidymodels,
+)
+```
+
+# The assignment
+The Machine Learning assignment has 3 main parts: First we create a skeptical and an informed simulation, based on the meta-analysis. Second we build and test our machine learning pipeline on the simulated data. Second we apply the pipeline to the empirical data.
+The report for the exam, thus, consists of the answer to all the following prompts:
+- Describe your machine learning pipeline. Produce a diagram of it to guide the reader (e.g. see Rybner et al 2022 Vocal markers of autism: Assessing the generalizability of ML models), and describe the different parts: data budgeting, data preprocessing, model choice and training, assessment of performance.
+- Briefly justify and describe your use of simulated data, and results from the pipeline on them.
+- Describe results from applying the ML pipeline to the empirical data and what can we learn from them.
+Remember: plots are very very important to communicate your process and results.
+
+## Part I - Simulating data
+Use the meta-analysis reported in Parola et al (2020), create a simulated dataset with 100 matched pairs of schizophrenia and controls, each participant producing 10 repeated measures (10 trials with their speech recorded). for each of these "recordings" (data points) produce 10 acoustic measures: 6 from the meta-analysis, 4 with just random noise. Do the same for a baseline dataset including only 10 noise variables. Tip: see the slides for the code. 
+```{r simulate data}
+#W8 slide 12
+#two participants 10 trials, population effect of 0.25 in cohens D, individual variation is 1, sample pair difference from population level pair::rnorm(1,0.25,1) = 0.6, the individual mean measures are then sc 0.3 and control 0.3
+
+#slide 13 Schizophrenia mean: 0.21 |   Control mean:  -0.21
+# TrialSD = 0.5 (the average variation between trials)
+# Error = 0.2 (measurement error)
+# 
+# Schizophrenia <- rnorm(1, rnorm(1, 0.21, 0.5), 0.2) # repeat 10 times
+# 
+# Control <- rnorm(1, rnorm(1, -0.21, 0.5), 0.2) # repeat 10 times
+
+set.seed(2022)
+
+#W8 slide 14
+SampleSize <- 100 #100 pairs
+Trials <- 10 #10 trials per pair
+
+## define effectsizes for MA and noise, Schizo compared to healthy control
+MA_InformedEffectMean <- c(0.25, -0.55, -0.75, -1.26, 0.05, 1.89,0,0,0,0)
+
+#make effect sizes for these 6 acostic variables
+
+# Pitch mode: 0.25 (-0.72, 1.30)
+# Pitch variability: -0.55 (-1.06, 0.09)
+# Duration
+# Speech rate: -0.75 (-1.51, 0.04)
+# Proportion of spoken time: -1.26 (-2.26, 0.25)
+# Pause number: 0.05 (-1.23, 1.13) 
+# Pause length: 1.89(0.72,3.21)
+
+Noise_SkepticEffectMean <- rep(0,10)
+
+# define individual variability from population and across trials and measurement
+IndividualSD <- 1
+TrialSD <- 0.5
+Error <- 0.2
+
+## For each pair participants we need to identify the true effect size for each variable
+for (i in seq(10)){
+  temp_informed <- tibble(
+    ID         = seq(SampleSize),
+    TrueEffect = rnorm(SampleSize, MA_InformedEffectMean[i], IndividualSD),
+    Variable   = paste0("v",i))
+  temp_skeptic <- tibble(
+    ID         = seq(SampleSize),
+    TrueEffect = rnorm(SampleSize, Noise_SkepticEffectMean[i], IndividualSD),
+    Variable   = paste0("v",i))
+  if (i == 1){
+    d_informed_true <- temp_informed
+    d_skeptic_true <- temp_skeptic
+  } else {
+    d_informed_true <- rbind(d_informed_true,temp_informed)
+    d_skeptic_true <- rbind(d_skeptic_true,temp_skeptic)
+  }
+}
+
+#Create tibble with one row per trial
+d_trial <- tibble(expand_grid(ID = seq(SampleSize), Trial = seq(Trials), Group = c("Schizophrenia","Control")))
+
+d_informed <- merge(d_informed_true,d_trial)
+d_skeptic <- merge(d_skeptic_true,d_trial)
+
+for (i in seq(nrow(d_informed))){
+  d_informed$measurement[i] <- ifelse(d_informed$Group[i]=="Schizophrenia",
+                                      rnorm(1,rnorm(1,d_informed$TrueEffect[i]/2,TrialSD),Error),
+                                      rnorm(1, rnorm(1, (-d_informed$TrueEffect[i]/2), TrialSD), Error)
+                                      )
+  d_skeptic$measurement[i] <- ifelse(d_skeptic$Group[i]=="Schizophrenia",
+                                     rnorm(1,rnorm(1,d_skeptic$TrueEffect[i]/2,TrialSD),Error),
+                                      rnorm(1, rnorm(1, (-d_skeptic$TrueEffect[i]/2), TrialSD), Error))
+}
+                                     
+d_informed_wide <- d_informed %>% 
+  mutate(TrueEffect = NULL) %>% 
+  pivot_wider(names_from  = Variable,
+              values_from = measurement)
+
+d_skeptic_wide <- d_skeptic %>% 
+  mutate(TrueEffect = NULL) %>% 
+  pivot_wider(names_from  = Variable,
+              values_from = measurement)
+
+#reorder columns
+df_informed_wide <- d_informed_wide[,c(1,2,3,4,11,12,5,13,7,10,6,8,9)]
+df_skeptic_wide <- d_skeptic_wide[,c(1,2,3,4,11,12,5,13,7,10,6,8,9)]
+
+
+#rename columns
+# Pitch mode: 0.25 (-0.72, 1.30)
+# Pitch variability: -0.55 (-1.06, 0.09)
+# Duration
+# Speech rate: -0.75 (-1.51, 0.04)
+# Proportion of spoken time: -1.26 (-2.26, 0.25)
+# Pause number: 0.05 (-1.23, 1.13) 
+# Pause length: 1.89(0.72,3.21)
+
+#make nice dataframes
+#rearrange
+df_informed_wide <- d_informed_wide[,c(1,2,3,4,11,12,5,13,7,10,6,8,9)] 
+#rename column
+df_informed_wide <- df_informed_wide%>% 
+  rename('PitchMode'='v1') %>% 
+  rename('PitchVar'='v2') %>% 
+  rename('SpeechRate'='v3') %>% 
+  rename('ProSpoTime'='v4') %>% 
+  rename('NumPause'='v5') %>% 
+  rename('LenPause'='v6') %>% 
+  rename('Noise1'='v7') %>% 
+  rename('Noise2'='v8') %>% 
+  rename('Noise3'='v9') %>% 
+  rename('Noise4'='v10')
+#rename varialbes
+d_informed$Variable[d_informed$Variable=='v1'] <- 'PitchMode'
+d_informed$Variable[d_informed$Variable=='v2'] <- 'PitchVar'
+d_informed$Variable[d_informed$Variable=='v3'] <- 'SpeechRate'
+d_informed$Variable[d_informed$Variable=='v4'] <- 'ProSpotime'
+d_informed$Variable[d_informed$Variable=='v5'] <- 'NumPause'
+d_informed$Variable[d_informed$Variable=='v6'] <- 'LenPause'
+d_informed$Variable[d_informed$Variable=='v7'] <- 'Noise1'
+d_informed$Variable[d_informed$Variable=='v8'] <- 'Noise2'
+d_informed$Variable[d_informed$Variable=='v9'] <- 'Noise3'
+d_informed$Variable[d_informed$Variable=='v10'] <- 'Noise4'
+
+#Same goes for skeptical
+df_skeptic_wide <- d_skeptic_wide[,c(1,2,3,4,11,12,5,13,7,10,6,8,9)] 
+df_skeptic_wide <- df_skeptic_wide%>% 
+  rename('PitchMode'='v1') %>% 
+  rename('PitchVar'='v2') %>% 
+  rename('SpeechRate'='v3') %>% 
+  rename('ProSpoTime'='v4') %>% 
+  rename('NumPause'='v5') %>% 
+  rename('LenPause'='v6') %>% 
+  rename('Noise1'='v7') %>% 
+  rename('Noise2'='v8') %>% 
+  rename('Noise3'='v9') %>% 
+  rename('Noise4'='v10')
+
+#d_skeptic
+d_skeptic$Variable[d_skeptic$Variable=='v1'] <- 'PitchMode'
+d_skeptic$Variable[d_skeptic$Variable=='v2'] <- 'PitchVar'
+d_skeptic$Variable[d_skeptic$Variable=='v3'] <- 'SpeechRate'
+d_skeptic$Variable[d_skeptic$Variable=='v4'] <- 'ProSpotime'
+d_skeptic$Variable[d_skeptic$Variable=='v5'] <- 'NumPause'
+d_skeptic$Variable[d_skeptic$Variable=='v6'] <- 'LenPause'
+d_skeptic$Variable[d_skeptic$Variable=='v7'] <- 'Noise1'
+d_skeptic$Variable[d_skeptic$Variable=='v8'] <- 'Noise2'
+d_skeptic$Variable[d_skeptic$Variable=='v9'] <- 'Noise3'
+d_skeptic$Variable[d_skeptic$Variable=='v10'] <- 'Noise4'
+
+```
+
+```{r plot simulated data}
+MA <- ggplot(aes(x= measurement, color= Group, fill=Group),data=d_informed)+
+  geom_density(alpha=0.5)+
+  facet_wrap(~Variable)+
+  xlab('Measurement')+
+  ylab('Density')+
+  ggtitle('Informed data')+
+  theme_bw()
+
+Noise <- ggplot(aes(x= measurement, color= Group, fill=Group),data=d_skeptic)+
+  geom_density(alpha=0.5)+
+  facet_wrap(~Variable)+
+  xlab('Measurement')+
+  ylab('Density')+
+  ggtitle('Skeptic data')+
+  theme_bw()
+
+sim_data <- grid.arrange(MA,Noise)
+ggsave("simulated data.png",sim_data,height=10,width=10,units="in")
+```
+
+## Part II - ML pipeline on simulated data
+On the two simulated datasets (separately) build a machine learning pipeline: i) create a data budget (e.g. balanced training and test sets); ii) pre-process the data (e.g. scaling the features); iii) fit and assess a classification algorithm on the training data (e.g. Bayesian multilevel logistic regression); iv) assess performance on the test set; v) discuss whether performance is as expected and feature importance is as expected.
+Bonus question: replace the bayesian multilevel regression with a different algorithm, e.g. SVM or random forest (but really, anything you'd like to try).
+
+# on the training do hierchacal model, because of multiple ID's
+
+i) create a data budget (e.g. balanced training and test sets)
+```{r data budgeting}
+TestID <- sample(seq(SampleSize),20)
+
+#MA
+train_informed <- df_informed_wide %>%
+  subset(!(ID %in% TestID))
+
+test_informed <- df_informed_wide %>%
+  subset(ID %in% TestID)
+
+#Noise
+train_skeptic <- df_skeptic_wide %>%
+  subset(!(ID %in% TestID))
+
+test_skeptic <- df_skeptic_wide %>%
+  subset(ID %in% TestID)
+```
+
+ii) pre-process the data (e.g. scaling the features);
+
+```{r tidymodel}
+library(tidymodels)
+
+
+#MA
+rec_informed <- train_informed %>%
+  recipe(Group ~ . ) %>% # defines the outcome        
+  step_scale('PitchMode','PitchVar','SpeechRate','ProSpoTime','NumPause','LenPause','Noise1','Noise2','Noise3','Noise4' ) %>% # scales numeric predictors
+  step_center('PitchMode','PitchVar','SpeechRate','ProSpoTime','NumPause','LenPause','Noise1','Noise2','Noise3','Noise4') %>% # center numeric predictors
+  prep(training = train_informed, retain = TRUE)
+
+# recioe(Condition ~.) %>%  update_role(Id, Trial, new_role = "second_level) %>% step_scale(all.numveric()) %>% set_center(all.numeric()) %>% prep(training=train_data,retain=T)
+
+
+#Noise
+rec_skeptic <- train_skeptic %>%
+  recipe(Group ~ . ) %>% # defines the outcome        
+  step_scale('PitchMode','PitchVar','SpeechRate','ProSpoTime','NumPause','LenPause','Noise1','Noise2','Noise3','Noise4') %>% # scales numeric predictors
+  step_center('PitchMode','PitchVar','SpeechRate','ProSpoTime','NumPause','LenPause','Noise1','Noise2','Noise3','Noise4') %>% # center numeric predictors
+  prep(training = train_skeptic, retain = TRUE)
+
+
+#Apply recipe to train and test
+##MA
+train_informed_s <- juice(rec_informed)
+test_informed_s <- bake(rec_informed, new_data = test_informed, all_predictors()) %>% 
+  mutate(Group = test_informed$Group)
+##Noise
+train_skeptic_s <- juice(rec_skeptic)
+test_skeptic_s <- bake(rec_skeptic, new_data = test_skeptic, all_predictors()) %>% 
+  mutate(Group = test_skeptic$Group)
+
+```
+
+
+iii) fit and assess a classification algorithm on the training data (e.g. Bayesian multilevel logistic regression); 
+```{r make model}
+model_all <- bf(Group ~ 1 + PitchMode+PitchVar+SpeechRate+ProSpoTime+NumPause+LenPause+Noise1+Noise2+Noise3+Noise4 + (1 + PitchMode+PitchVar + SpeechRate + ProSpoTime  + NumPause  + LenPause  + Noise1  + Noise2  + Noise3  + Noise4 | ID))
+
+model_intercept <- bf(Group ~ 1 + PitchMode+PitchVar+SpeechRate+ProSpoTime+NumPause+LenPause+Noise1+Noise2+Noise3+Noise4 + (1 | ID))
+#Group ~ . -Trial - ID
+
+model_base <-  bf(Group ~ 1 + PitchMode+PitchVar+SpeechRate+ProSpoTime+NumPause+LenPause+Noise1+Noise2+Noise3+Noise4)
+```
+
+```{r prior}
+#get_prior(model_intercept, data=train_informed_s,family = bernoulli)
+
+pa <- c(
+  prior(normal(0,1),class=b),
+  prior(normal(0,0.1),class=sd),
+  prior(lkj(1), class= cor),
+  prior(lkj(1),class=cor,group=ID),
+  prior(normal(0,1),class=Intercept)
+)
+
+pb <- c(
+  prior(normal(0,1),class=b),
+  prior(normal(0,1),class=Intercept)
+)
+
+pi <- c(
+  prior(normal(0,1),class=b),
+  prior(normal(0,0.1),class=sd),
+  prior(normal(0,1),class=Intercept)
+)
+
+```
+
+```{r fit prior}
+#Informed
+##All
+model_all_inf_pa <- 
+  brm(
+    model_all, 
+    data = train_informed_s,
+    family = bernoulli,
+    prior = pa,  
+    sample_prior = "only", 
+    iter = 2000, #at least 4000 iters
+    warmup = 1000,#at least 400
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,#more cores, more parallel processing
+    chains = 2, #at least two chains, use 4
+    file = "Model_all_inf_prior",
+    control = list(adapt_delta = 0.99, max_treedepth = 20))
+
+##Intercept
+model_int_inf_pi <- 
+  brm(
+    model_intercept, 
+    data = train_informed_s,
+    family = bernoulli,
+    prior = pi,  
+    sample_prior = "only", 
+    iter = 2000, #at least 4000 iters
+    warmup = 1000,#at least 400
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,#more cores, more parallel processing
+    chains = 2, #at least two chains, use 4
+    file = "Model_int_inf_prior",
+    control = list(adapt_delta = 0.99, max_treedepth = 20))
+
+##Baseline
+model_bas_inf_pb <- 
+  brm(
+    model_base, 
+    data = train_informed_s,
+    family = bernoulli,
+    prior = pb,  
+    sample_prior = "only", 
+    iter = 2000, #at least 4000 iters
+    warmup = 1000,#at least 400
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,#more cores, more parallel processing
+    chains = 2, #at least two chains, use 4
+    file = "Model_base_inf_prior",
+    control = list(adapt_delta = 0.99, max_treedepth = 20))
+
+#Skeptic
+## All
+model_all_ske_pa <-
+  brm(
+    model_all, 
+    data = train_skeptic_s,
+    family = bernoulli,
+    prior = pa,  
+    sample_prior = "only", 
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    file = "Model_all_skeptic_prior",
+    control = list(adapt_delta = 0.99, max_treedepth = 20))
+
+##Intercept
+model_int_ske_pi <- 
+  brm(
+    model_intercept, 
+    data = train_skeptic_s,
+    family = bernoulli,
+    prior = pi,  
+    sample_prior = "only", 
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    file = "Model_int_skeptic_prior",
+    control = list(adapt_delta = 0.99, max_treedepth = 20))
+
+##Baseline
+model_bas_ske_pb <- 
+  brm(
+    model_base, 
+    data = train_skeptic_s,
+    family = bernoulli,
+    prior = pb,  
+    sample_prior = "only", 
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    file = "Model_base_skeptic_prior",
+    control = list(adapt_delta = 0.99, max_treedepth = 20))
+
+```
+
+```{r prior check - not updated}
+#pp checking the priors - could look better, but fine i guess
+#pp <- 
+  pp_check(model_all_inf_pa, ndraws = 100)+labs(title='Train Informed')
+ggsave('prior check model.png',pp)
+
+pp_noise <- pp_check(class_model_p1_noise, ndaws=100)+labs(title='Train Skeptic')
+```
+
+```{r fit model}
+#Informed
+##All
+fit_inf_all <- 
+  brm(
+    model_all, 
+    data = train_informed_s,
+    family = bernoulli,
+    prior = pa,  
+    sample_prior = T, 
+    save_pars = save_pars(all = TRUE),
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    file = "fit_inf_all",
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+    stan_model_args=list(stanc_options = list("O1"))
+    )
+
+##Intercept
+fit_inf_int <- 
+  brm(
+    model_intercept, 
+    data = train_informed_s,
+    family = bernoulli,
+    prior = pi,  
+    sample_prior = T, 
+    save_pars = save_pars(all = TRUE),
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    file = "fit_inf_intercept",
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+    stan_model_args=list(stanc_options = list("O1"))
+    )
+
+##Baseline
+fit_inf_base <- 
+  brm(
+    model_base, 
+    data = train_informed_s,
+    family = bernoulli,
+    prior = pb,  
+    sample_prior = T, 
+    save_pars = save_pars(all = TRUE),
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    file = "fit_inf_base",
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+    stan_model_args=list(stanc_options = list("O1"))
+    )
+
+#Skeptic
+##All
+fit_ske_all <- 
+  brm(
+    model_all, 
+    data = train_skeptic_s,
+    family = bernoulli,
+    prior = pa,  
+    sample_prior = T, 
+    save_pars = save_pars(all = TRUE),
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    file = "fit_ske_all",
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+    stan_model_args=list(stanc_options = list("O1"))
+    )
+
+##Intercept
+fit_ske_int <- 
+  brm(
+    model_intercept, 
+    data = train_skeptic_s,
+    family = bernoulli,
+    prior = pi,  
+    sample_prior = T, 
+    save_pars = save_pars(all = TRUE),
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    file = "fit_ske_intercept",
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+    stan_model_args=list(stanc_options = list("O1"))
+    )
+
+##Baseline
+fit_ske_base <- 
+  brm(
+    model_base, 
+    data = train_skeptic_s,
+    family = bernoulli,
+    prior = pb,  
+    sample_prior = T, 
+    save_pars = save_pars(all = TRUE),
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    file = "fit_ske_base",
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+    stan_model_args=list(stanc_options = list("O1"))
+    )
+```
+
+```{r update models with fit}
+es1p1upd <- update(class_fit_p1)
+pu1p1upd <- update(es1p1fit,newdata=subset(d,Published==1))
+
+
+```
+
+```{r posterior check - not updated}
+#pop <- 
+  pp_check(fit_inf_all, ndraws = 100)+labs(title='Train Informed')+xlim(-1,3)
+pop_noise <- pp_check(class_fit_p1_noise, ndraws=100)+labs(title='Train Skeptic')
+grid.arrange(pop,pop_noise)
+
+```
+
+```{r prior posterior plots}
+#Informed
+## All
+variables(fit_inf_all)
+pos_inf_all <- as_draws_df(fit_inf_all)
+
+###Intercept
+intercept <-
+  ggplot()+
+  geom_density(aes(pos_inf_all$Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3
+                   )+
+  geom_density(aes(pos_inf_all$prior_Intercept),
+                   fill='red',
+                   color='red',
+                   alpha=0.3
+                   )+
+    xlim(-4,5)+
+    ylim(0,3)+
+  xlab('Estimate')+
+  ggtitle('Intercept')
+
+### Variables
+pos_inf_all_var_tall <- 
+  select(pos_inf_all, c("b_PitchMode", "b_PitchVar", "b_SpeechRate", "b_ProSpoTime", "b_NumPause", "b_LenPause", "b_Noise1", "b_Noise2", "b_Noise3", "b_Noise4","prior_b")) %>% 
+  mutate(tall=1) %>% 
+  reshape2::melt(id.vars='tall')
+
+
+variables <- 
+  ggplot()+
+  geom_density(data=pos_inf_all_var_tall, aes(x=value, color=variable, fill=variable), alpha=0.3)+
+  xlim(-4,5)+
+  ylim(0,3)+
+  xlab('Estimates')+
+  ggtitle('Variables')
+
+### SD
+pos_inf_all_sd_tall <- pos_inf_all %>% 
+  select(c("sd_ID__PitchMode", "sd_ID__PitchVar", "sd_ID__SpeechRate", "sd_ID__ProSpoTime", "sd_ID__NumPause",  "sd_ID__LenPause" ,"sd_ID__Noise1" ,"sd_ID__Noise2", "sd_ID__Noise3" , "sd_ID__Noise4","prior_sd_ID")) %>% 
+  mutate(tall=1) %>% 
+  reshape2::melt(id.vars='tall')
+    
+sd <- ggplot()+
+  geom_density(data=pos_inf_all_sd_tall, aes(x=value, color=variable, fill=variable), alpha=0.3)+
+  ylim(0,8)+
+  xlim(-0.1,1)+
+  xlab('Estimates')+
+  ggtitle('Standard deviations')
+ggsave('sd.PNG',sd)
+ggsave('var.png',variables)
+
+##combine
+pop_inf_all <- grid.arrange(variables, sd,intercept, top='Prior-posterior Informed',ncol=2)
+ggsave("prior_posterior_inf_all.PNG",pop_inf_all,height=7,width=10,units="in")
+
+#intercept
+#prior_Intercept,prior_b,prior_sd_ID,lprior
+
+intercept <-
+  ggplot()+
+  geom_density(aes(pos_inf_int$Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3
+                   )+
+  geom_density(aes(pos_inf_int$prior_Intercept),
+                   fill='red',
+                   color='red',
+                   alpha=0.3
+                   )+
+    xlim(-4,5)+
+    ylim(0,3)+
+  xlab('Estimate')+
+  ggtitle('Intercept')
+
+### Variables
+pos_inf_int_var_tall <- 
+  select(pos_inf_int, c("b_PitchMode", "b_PitchVar", "b_SpeechRate", "b_ProSpoTime", "b_NumPause", "b_LenPause", "b_Noise1", "b_Noise2", "b_Noise3", "b_Noise4","prior_b")) %>% 
+  mutate(tall=1) %>% 
+  reshape2::melt(id.vars='tall')
+
+variables <- 
+  ggplot()+
+  geom_density(data=pos_inf_int_var_tall, aes(x=value, color=variable, fill=variable), alpha=0.3)+
+  xlim(-4,5)+
+  ylim(0,3)+
+  xlab('Estimates')+
+  ggtitle('Variables')
+
+### SD
+pos_inf_int_sd_tall <- pos_inf_all %>% 
+  select(c("sd_ID__PitchMode", "sd_ID__PitchVar", "sd_ID__SpeechRate", "sd_ID__ProSpoTime", "sd_ID__NumPause",  "sd_ID__LenPause" ,"sd_ID__Noise1" ,"sd_ID__Noise2", "sd_ID__Noise3" , "sd_ID__Noise4","prior_sd_ID")) %>% 
+  mutate(tall=1) %>% 
+  reshape2::melt(id.vars='tall')
+    
+sd <- ggplot()+
+  geom_density(data=pos_inf_int_sd_tall, aes(x=value, color=variable, fill=variable), alpha=0.3)+
+  ylim(0,8)+
+  xlim(-0.1,1)+
+  xlab('Estimates')+
+  ggtitle('Standard deviations')
+
+##combine
+pop_inf_int <- grid.arrange(variables, sd, intercept, top='Prior-posterior Informed - Varying intercepts',ncol=2)
+ggsave("prior_posterior_update_inf_int.PNG",pop_inf_int,height=7,width=10,units="in")
+
+#Baseline
+#intercept
+pos_inf_bas <- as_draws_df(fit_inf_base)
+
+intercept <-
+  ggplot()+
+  geom_density(aes(pos_inf_bas$Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3
+                   )+
+  geom_density(aes(pos_inf_bas$prior_Intercept),
+                   fill='red',
+                   color='red',
+                   alpha=0.3
+                   )+
+    xlim(-4,5)+
+    ylim(0,3)+
+  xlab('Estimate')+
+  ggtitle('Intercept')
+
+### Variables
+pos_inf_bas_var_tall <- 
+  select(pos_inf_bas, c("b_PitchMode", "b_PitchVar", "b_SpeechRate", "b_ProSpoTime", "b_NumPause", "b_LenPause", "b_Noise1", "b_Noise2", "b_Noise3", "b_Noise4","prior_b")) %>% 
+  mutate(tall=1) %>% 
+  reshape2::melt(id.vars='tall')
+
+variables <- 
+  ggplot()+
+  geom_density(data=pos_inf_bas_var_tall, aes(x=value, color=variable, fill=variable), alpha=0.3)+
+  xlim(-4,5)+
+  ylim(0,3)+
+  xlab('Estimates')+
+  ggtitle('Variables')
+pop_inf_bas <- grid.arrange(variables, intercept, top='Prior-posterior Informed - Baseline')
+ggsave("prior_posterior_update_inf_base.PNG",pop_inf_bas,height=7,width=7,units="in")
+
+#skeptic
+## All
+pos_ske_all <- as_draws_df(fit_ske_all)
+
+###Intercept
+intercept <-
+  ggplot()+
+  geom_density(aes(pos_ske_all$Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3
+                   )+
+  geom_density(aes(pos_ske_all$prior_Intercept),
+                   fill='red',
+                   color='red',
+                   alpha=0.3
+                   )+
+    xlim(-4,5)+
+    ylim(0,3)+
+  xlab('Estimate')+
+  ggtitle('Intercept')
+
+### Variables
+pos_ske_all_var_tall <- 
+  select(pos_ske_all, c("b_PitchMode", "b_PitchVar", "b_SpeechRate", "b_ProSpoTime", "b_NumPause", "b_LenPause", "b_Noise1", "b_Noise2", "b_Noise3", "b_Noise4","prior_b")) %>% 
+  mutate(tall=1) %>% 
+  reshape2::melt(id.vars='tall')
+
+
+variables <- 
+  ggplot()+
+  geom_density(data=pos_ske_all_var_tall, aes(x=value, color=variable, fill=variable), alpha=0.3)+
+  xlim(-4,5)+
+  ylim(0,3)+
+  xlab('Estimates')+
+  ggtitle('Variables')
+
+### SD
+pos_ske_all_sd_tall <- pos_ske_all %>% 
+  select(c("sd_ID__PitchMode", "sd_ID__PitchVar", "sd_ID__SpeechRate", "sd_ID__ProSpoTime", "sd_ID__NumPause",  "sd_ID__LenPause" ,"sd_ID__Noise1" ,"sd_ID__Noise2", "sd_ID__Noise3" , "sd_ID__Noise4","prior_sd_ID")) %>% 
+  mutate(tall=1) %>% 
+  reshape2::melt(id.vars='tall')
+    
+sd <- ggplot()+
+  geom_density(data=pos_ske_all_sd_tall, aes(x=value, color=variable, fill=variable), alpha=0.3)+
+  ylim(0,8)+
+  xlim(-0.1,1)+
+  xlab('Estimates')+
+  ggtitle('Standard deviations')
+
+##combine
+pop_ske_all <- grid.arrange(variables, sd, intercept, top='Prior-posterior Skeptic - varying slopes and intercept',ncol=2)
+ggsave("prior_posterior_ske_all.PNG",pop_ske_all,height=7,width=10,units="in")
+
+#intercept
+pos_ske_int <- as_draws_df(fit_ske_int)
+
+intercept <-
+  ggplot()+
+  geom_density(aes(pos_ske_int$Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3
+                   )+
+  geom_density(aes(pos_ske_int$prior_Intercept),
+                   fill='red',
+                   color='red',
+                   alpha=0.3
+                   )+
+    xlim(-4,5)+
+    ylim(0,3)+
+  xlab('Estimate')+
+  ggtitle('Intercept')
+### Variables
+pos_ske_int_var_tall <- 
+  select(pos_ske_int, c("b_PitchMode", "b_PitchVar", "b_SpeechRate", "b_ProSpoTime", "b_NumPause", "b_LenPause", "b_Noise1", "b_Noise2", "b_Noise3", "b_Noise4","prior_b")) %>% 
+  mutate(tall=1) %>% 
+  reshape2::melt(id.vars='tall')
+
+variables <- 
+  ggplot()+
+  geom_density(data=pos_ske_int_var_tall, aes(x=value, color=variable, fill=variable), alpha=0.3)+
+  xlim(-4,5)+
+  ylim(0,3)+
+  xlab('Estimates')+
+  ggtitle('Variables')
+
+### SD
+pos_ske_int_sd_tall <- pos_ske_all %>% 
+  select(c("sd_ID__PitchMode", "sd_ID__PitchVar", "sd_ID__SpeechRate", "sd_ID__ProSpoTime", "sd_ID__NumPause",  "sd_ID__LenPause" ,"sd_ID__Noise1" ,"sd_ID__Noise2", "sd_ID__Noise3" , "sd_ID__Noise4","prior_sd_ID")) %>% 
+  mutate(tall=1) %>% 
+  reshape2::melt(id.vars='tall')
+    
+sd <- ggplot()+
+  geom_density(data=pos_ske_int_sd_tall, aes(x=value, color=variable, fill=variable), alpha=0.3)+
+  ylim(0,8)+
+  xlim(-0.1,1)+
+  xlab('Estimates')+
+  ggtitle('Standard deviations')
+
+##combine
+pop_ske_int <- grid.arrange(variables, sd, intercept, top='Prior-posterior Skeptic - Varying intercepts',ncol=2)
+ggsave("prior_posterior_update_ske_int.PNG",pop_ske_int,height=7,width=10,units="in")
+
+#Baseline
+#intercept
+pos_ske_bas <- as_draws_df(fit_ske_base)
+intercept <-
+  ggplot()+
+  geom_density(aes(pos_ske_bas$Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3
+                   )+
+  geom_density(aes(pos_ske_bas$prior_Intercept),
+                   fill='red',
+                   color='red',
+                   alpha=0.3
+                   )+
+    xlim(-4,5)+
+    ylim(0,3)+
+  xlab('Estimate')+
+  ggtitle('Intercept')
+### Variables
+pos_ske_bas_var_tall <- 
+  select(pos_ske_bas, c("b_PitchMode", "b_PitchVar", "b_SpeechRate", "b_ProSpoTime", "b_NumPause", "b_LenPause", "b_Noise1", "b_Noise2", "b_Noise3", "b_Noise4","prior_b")) %>% 
+  mutate(tall=1) %>% 
+  reshape2::melt(id.vars='tall')
+
+variables <- 
+  ggplot()+
+  geom_density(data=pos_ske_bas_var_tall, aes(x=value, color=variable, fill=variable), alpha=0.3)+
+  xlim(-4,5)+
+  ylim(0,3)+
+  xlab('Estimates')+
+  ggtitle('Variables')
+pop_ske_bas <- grid.arrange(variables, intercept, top='Prior-posterior Skeptic - Baseline')
+ggsave("prior_posterior_update_ske_base.PNG",pop_ske_bas,height=7,width=7,units="in")
+```
+
+```{r model output}
+summary(fit_inf_all)
+summary(fit_inf_int)
+summary(fit_inf_base)
+summary(fit_ske_all)
+summary(fit_ske_int)
+summary(fit_ske_base)
+```
+
+```{r loo compare}
+library(loo)
+#informed
+loo_fit_inf_all <- add_criterion(fit_inf_all,"loo")
+loo_fit_inf_int <- add_criterion(fit_inf_int,"loo")
+loo_fit_inf_bas <- add_criterion(fit_inf_base,"loo")
+
+loo_compare(loo_fit_inf_all,loo_fit_inf_int,loo_fit_inf_bas)
+loo_model_weights(loo_fit_inf_all,loo_fit_inf_int,loo_fit_inf_bas)
+
+#skeptic
+loo_fit_ske_all <- add_criterion(fit_ske_all,"loo")
+loo_fit_ske_int <- add_criterion(fit_ske_int,"loo")
+loo_fit_ske_bas <- add_criterion(fit_ske_base,"loo")
+loo_compare(loo_fit_ske_all,loo_fit_ske_int,loo_fit_ske_bas)
+loo_model_weights(loo_fit_ske_all,loo_fit_ske_int,loo_fit_ske_bas)
+
+loo_compare(loo_fit_ske_bas,loo_fit_inf_bas)
+loo_model_weights(loo_fit_ske_bas,loo_fit_inf_bas)
+```
+
+
+iv) assess performance on the test set;
+```{r prediction and performance}
+# generate average predictions for the trained dataset
+### skeptic 
+#Vary slopes
+train_skeptic_s$PredictionsPerc0 <- predict(fit_ske_all)[, 1]
+train_skeptic_s$Predictions0[train_skeptic_s$PredictionsPerc0 > 0.5] <- "Schizophrenia"
+train_skeptic_s$Predictions0[train_skeptic_s$PredictionsPerc0 <= 0.5] <- "Control"
+
+# #vary intercept
+ train_skeptic_s$PredictionsPerc1 <- predict(fit_ske_int)[, 1]
+ train_skeptic_s$Predictions1[train_skeptic_s$PredictionsPerc1 > 0.5] <- "Schizophrenia"
+ train_skeptic_s$Predictions1[train_skeptic_s$PredictionsPerc1 <= 0.5] <- "Control"
+ 
+# #vary baseline
+ train_skeptic_s$PredictionsPerc2 <- predict(fit_ske_base)[, 1]
+ train_skeptic_s$Predictions2[train_skeptic_s$PredictionsPerc2 > 0.5] <- "Schizophrenia"
+ train_skeptic_s$Predictions2[train_skeptic_s$PredictionsPerc2 <= 0.5] <- "Control"
+
+
+train_skeptic_s <- train_skeptic_s %>% 
+  mutate(
+    Group = as.factor(Group), 
+    Predictions0 = as.factor(Predictions0),
+    Predictions1 = as.factor(Predictions1),
+    Predictions2 = as.factor(Predictions2)
+  )
+
+### informed
+#all
+train_informed_s$PredictionsPerc0 <- predict(fit_inf_all)[, 1]
+train_informed_s$Predictions0[train_informed_s$PredictionsPerc0 > 0.5] <- "Schizophrenia"
+train_informed_s$Predictions0[train_informed_s$PredictionsPerc0 <= 0.5] <- "Control"
+
+# #vary intercept
+ train_informed_s$PredictionsPerc1 <- predict(fit_inf_int)[, 1]
+ train_informed_s$Predictions1[train_informed_s$PredictionsPerc1 > 0.5] <- "Schizophrenia"
+ train_informed_s$Predictions1[train_informed_s$PredictionsPerc1 <= 0.5] <- "Control"
+ 
+# #vary baseline
+ train_informed_s$PredictionsPerc2 <- predict(fit_inf_base)[, 1]
+ train_informed_s$Predictions2[train_informed_s$PredictionsPerc2 > 0.5] <- "Schizophrenia"
+ train_informed_s$Predictions2[train_informed_s$PredictionsPerc2 <= 0.5] <- "Control"
+
+
+train_informed_s <- train_informed_s %>% 
+  mutate(
+    Group = as.factor(Group), 
+    Predictions0 = as.factor(Predictions0),
+    Predictions1 = as.factor(Predictions1),
+    Predictions2 = as.factor(Predictions2)
+  )
+```
+
+```{r prediction for test}
+# generate average predictions for the test dataset
+### skeptic
+####all
+test_skeptic_s$PredictionsPerc0 <- predict(fit_ske_all, newdata = test_skeptic_s, allow_new_levels = TRUE)[, 1]
+test_skeptic_s$Predictions0[test_skeptic_s$PredictionsPerc0 > 0.5] <- "Schizophrenia"
+test_skeptic_s$Predictions0[test_skeptic_s$PredictionsPerc0 <= 0.5] <- "Control"
+
+####vary intercept
+test_skeptic_s$PredictionsPerc1 <- predict(fit_ske_int, newdata=test_skeptic_s,allow_new_levels=TRUE)[, 1]
+ test_skeptic_s$Predictions1[test_skeptic_s$PredictionsPerc1 > 0.5] <- "Schizophrenia"
+ test_skeptic_s$Predictions1[test_skeptic_s$PredictionsPerc1 <= 0.5] <- "Control"
+ 
+####Base
+ test_skeptic_s$PredictionsPerc2 <- predict(fit_ske_base,newdata=test_skeptic_s,allow_new_levels=TRUE)[, 1]
+ test_skeptic_s$Predictions2[test_skeptic_s$PredictionsPerc2 > 0.5] <- "Schizophrenia"
+ test_skeptic_s$Predictions2[test_skeptic_s$PredictionsPerc2 <= 0.5] <- "Control"
+
+
+test_skeptic_s <- test_skeptic_s %>% 
+  mutate(
+    Group = as.factor(Group), 
+    Predictions0 = as.factor(Predictions0),
+    Predictions1 = as.factor(Predictions1),
+    Predictions2 = as.factor(Predictions2)
+  )
+
+### informed
+####all
+test_informed_s$PredictionsPerc0 <- predict(fit_inf_all, newdata=test_informed_s, allow_new_levels=TRUE)[, 1]
+test_informed_s$Predictions0[test_informed_s$PredictionsPerc0 > 0.5] <- "Schizophrenia"
+test_informed_s$Predictions0[test_informed_s$PredictionsPerc0 <= 0.5] <- "Control"
+
+#####vary intercept
+ test_informed_s$PredictionsPerc1 <- predict(fit_inf_int, newdata=test_informed_s, allow_new_levels=TRUE)[, 1]
+ test_informed_s$Predictions1[test_informed_s$PredictionsPerc1 > 0.5] <- "Schizophrenia"
+ test_informed_s$Predictions1[test_informed_s$PredictionsPerc1 <= 0.5] <- "Control"
+ 
+####baseline
+ test_informed_s$PredictionsPerc2 <- predict(fit_inf_base, newdata=test_informed_s, allow_new_levels=TRUE)[, 1]
+ test_informed_s$Predictions2[test_informed_s$PredictionsPerc2 > 0.5] <- "Schizophrenia"
+ test_informed_s$Predictions2[test_informed_s$PredictionsPerc2 <= 0.5] <- "Control"
+
+
+test_informed_s <- test_informed_s %>% 
+  mutate(
+    Group = as.factor(Group), 
+    Predictions0 = as.factor(Predictions0),
+    Predictions1 = as.factor(Predictions1),
+    Predictions2 = as.factor(Predictions2)
+  )
+```
+
+```{r assessing performance}
+library(caret)
+#train informed all
+conf_mat(
+  train_informed_s,
+  truth = Group,
+  estimate = Predictions0,
+  dnn = c('Prediction','Truth')
+)
+#define vectors of actual values and predicted values
+actual <- factor(rep(c('SC', 'HC'), times=c(800, 800)))
+pred <- factor(rep(c('SC', 'HC', 'SC', 'HC'), times=c(780,20,19,781)))
+#create confusion matrix and calculate metrics related to confusion matrix
+conf_mat_info_train_all <- confusionMatrix(pred, actual, mode = "everything", positive="SC")
+
+#train informed intercept
+conf_mat(
+  train_informed_s,
+  truth = Group,
+  estimate = Predictions1,
+  dnn = c('Prediction','Truth')
+)
+#define vectors of actual values and predicted values
+actual <- factor(rep(c('SC', 'HC'), times=c(800, 800)))
+pred <- factor(rep(c('SC', 'HC', 'SC', 'HC'), times=c(771,29,29,771)))
+#create confusion matrix and calculate metrics related to confusion matrix
+conf_mat_info_train_int <- confusionMatrix(pred, actual, mode = "everything", positive="SC")
+
+#train informed baseline
+conf_mat(
+  train_informed_s,
+  truth = Group,
+  estimate = Predictions2,
+  dnn = c('Prediction','Truth')
+)
+#define vectors of actual values and predicted values
+actual <- factor(rep(c('SC', 'HC'), times=c(800, 800)))
+pred <- factor(rep(c('SC', 'HC', 'SC', 'HC'), times=c(771,29,29,771)))
+#create confusion matrix and calculate metrics related to confusion matrix
+conf_mat_info_train_base <- confusionMatrix(pred, actual, mode = "everything", positive="SC")
+
+#test informed all
+conf_mat(
+  test_informed_s,
+  truth = Group,
+  estimate = Predictions0,
+  dnn = c('Prediction','Truth')
+)
+#define vectors of actual values and predicted values
+actual <- factor(rep(c('SC', 'HC'), times=c(200, 200)))
+pred <- factor(rep(c('SC', 'HC', 'SC', 'HC'), times=c(193,7,10,190)))
+#create confusion matrix and calculate metrics related to confusion matrix
+conf_mat_info_test_all <- confusionMatrix(pred, actual, mode = "everything", positive="SC")
+
+#test informed intercept
+conf_mat(
+  test_informed_s,
+  truth = Group,
+  estimate = Predictions1,
+  dnn = c('Prediction','Truth')
+)
+#define vectors of actual values and predicted values
+actual <- factor(rep(c('SC', 'HC'), times=c(200, 200)))
+pred <- factor(rep(c('SC', 'HC', 'SC', 'HC'), times=c(192,8,11,189)))
+#create confusion matrix and calculate metrics related to confusion matrix
+conf_mat_info_test_int <- confusionMatrix(pred, actual, mode = "everything", positive="SC")
+
+#test informed baseline
+conf_mat(
+  test_informed_s,
+  truth = Group,
+  estimate = Predictions2,
+  dnn = c('Prediction','Truth')
+)
+#define vectors of actual values and predicted values
+actual <- factor(rep(c('SC', 'HC'), times=c(200, 200)))
+pred <- factor(rep(c('SC', 'HC', 'SC', 'HC'), times=c(191,9,11,189)))
+#create confusion matrix and calculate metrics related to confusion matrix
+conf_mat_info_test_base <- confusionMatrix(pred, actual, mode = "everything", positive="SC")
+
+#train skeptic all
+conf_mat(
+  train_skeptic_s,
+  truth = Group,
+  estimate = Predictions0,
+  dnn = c('Prediction','Truth')
+)
+#define vectors of actual values and predicted values
+actual <- factor(rep(c('SC', 'HC'), times=c(800, 800)))
+pred <- factor(rep(c('SC', 'HC', 'SC', 'HC'), times=c(795,5,7,793)))
+#create confusion matrix and calculate metrics related to confusion matrix
+conf_mat_skep_train_all <- confusionMatrix(pred, actual, mode = "everything", positive="SC")
+
+#train skeptic intercept
+conf_mat(
+  train_skeptic_s,
+  truth = Group,
+  estimate = Predictions1,
+  dnn = c('Prediction','Truth')
+)
+#define vectors of actual values and predicted values
+actual <- factor(rep(c('SC', 'HC'), times=c(800, 800)))
+pred <- factor(rep(c('SC', 'HC', 'SC', 'HC'), times=c(452,348,319,481)))
+#create confusion matrix and calculate metrics related to confusion matrix
+conf_mat_skep_train_int <- confusionMatrix(pred, actual, mode = "everything", positive="SC")
+
+#train skeptic baseline
+conf_mat(
+  train_skeptic_s,
+  truth = Group,
+  estimate = Predictions2,
+  dnn = c('Prediction','Truth')
+)
+#define vectors of actual values and predicted values
+actual <- factor(rep(c('SC', 'HC'), times=c(800, 800)))
+pred <- factor(rep(c('SC', 'HC', 'SC', 'HC'), times=c(458,342,325,475)))
+#create confusion matrix and calculate metrics related to confusion matrix
+conf_mat_skep_train_base <- confusionMatrix(pred, actual, mode = "everything", positive="SC")
+
+#test skeptic all
+conf_mat(
+  test_skeptic_s,
+  truth = Group,
+  estimate = Predictions0,
+  dnn = c('Prediction','Truth')
+)
+#define vectors of actual values and predicted values
+actual <- factor(rep(c('SC', 'HC'), times=c(200, 200)))
+pred <- factor(rep(c('SC', 'HC', 'SC', 'HC'), times=c(133,67,70,130)))
+#create confusion matrix and calculate metrics related to confusion matrix
+conf_mat_skep_test_all <- confusionMatrix(pred, actual, mode = "everything", positive="SC")
+
+#test skeptic intercept
+conf_mat(
+  test_skeptic_s,
+  truth = Group,
+  estimate = Predictions1,
+  dnn = c('Prediction','Truth')
+)
+#define vectors of actual values and predicted values
+actual <- factor(rep(c('SC', 'HC'), times=c(200, 200)))
+pred <- factor(rep(c('SC', 'HC', 'SC', 'HC'), times=c(128,72,80,120)))
+#create confusion matrix and calculate metrics related to confusion matrix
+conf_mat_skep_test_int <- confusionMatrix(pred, actual, mode = "everything", positive="SC")
+
+#test skeptic baseline
+conf_mat(
+  test_skeptic_s,
+  truth = Group,
+  estimate = Predictions2,
+  dnn = c('Prediction','Truth')
+)
+#define vectors of actual values and predicted values
+actual <- factor(rep(c('SC', 'HC'), times=c(200, 200)))
+pred <- factor(rep(c('SC', 'HC', 'SC', 'HC'), times=c(132,68,77,123)))
+#create confusion matrix and calculate metrics related to confusion matrix
+conf_mat_skep_test_base <- confusionMatrix(pred, actual, mode = "everything", positive="SC")
+
+```
+
+```{r plot the prediction}
+labels <- c('Prior','Type','F1','Model')
+k1 <- c('Informed','Test'    ,conf_mat_info_test_all[["byClass"]][["F1"]],  'VaryingSlopes')
+k2 <- c('Informed','Test'    ,conf_mat_info_test_int[["byClass"]][["F1"]],  'VaryingIntercepts')
+k3 <- c('Informed','Test'    ,conf_mat_info_test_base[["byClass"]][["F1"]], 'FixedEffects')
+k4 <- c('Informed','Training',conf_mat_info_train_all[["byClass"]][["F1"]], 'VaryingSlopes')
+k5 <- c('Informed','Training',conf_mat_info_train_int[["byClass"]][["F1"]], 'VaryingIntercepts')
+k6 <- c('Informed','Training',conf_mat_info_train_base[["byClass"]][["F1"]],'FixedEffects')
+k7 <-  c('Skeptic','Test'    ,conf_mat_skep_test_all[["byClass"]][["F1"]],  'VaryingSlopes')
+k8 <-  c('Skeptic','Test'    ,conf_mat_skep_test_int[["byClass"]][["F1"]],  'VaryingIntercepts')
+k9 <-  c('Skeptic','Test'    ,conf_mat_skep_test_base[["byClass"]][["F1"]], 'FixedEffects')
+k10 <- c('Skeptic','Training',conf_mat_skep_train_all[["byClass"]][["F1"]], 'VaryingSlopes')
+k11 <- c('Skeptic','Training',conf_mat_skep_train_int[["byClass"]][["F1"]], 'VaryingIntercepts')
+k12 <- c('Skeptic','Training',conf_mat_skep_train_base[["byClass"]][["F1"]],'FixedEffects')
+
+
+pre <- as.data.frame( rbind(k1, k2, k3, k4, k5, k6, k7, k8, k9, k10, k11, k12))
+pre <- pre %>% 
+   rename('Prior'='V1') %>% 
+   rename('Type'='V2') %>% 
+   rename('F1'='V3') %>% 
+   rename('Model'='V4') %>% 
+  mutate(F1=as.numeric(F1)) %>% 
+  mutate(Model=as.factor(Model)) %>% 
+  mutate(Type=as.factor(Type)) %>% 
+  mutate(Prior=as.factor(Prior))
+
+  
+ pre_plot <- pre %>% 
+  ggplot(aes(y=F1,x=Model, color=Type, fill=Type))+
+  geom_line(size=1)+
+  geom_point(position=position_dodge(width=0.5))+
+  facet_wrap(~ Prior)+
+  scale_y_continuous(limits = c(0.45, 1))+
+  geom_abline(intercept=0.5, slope=0)+
+  ggtitle('Average prediction')
+ggsave('average prediction plot.png',pre_plot,height=7,width=10,units="in")
+```
+
+```{r prediction uncertainty}
+PerformanceProb <- tibble(expand_grid(
+  Sample=seq(2000), # remember this is from brm(iter=XX), sample=seq(XX)
+  Model=c('FixedEffects','VaryingIntercepts','VaryingSlopes'), #add more coloumns, if you have more models
+  Prior = c('Informed','Skeptic'),
+  Type = c('Training', 'Test'),
+  Accuracy = NULL
+))
+
+#Informed
+train_inv_inf_all <- inv_logit_scaled(posterior_linpred(fit_inf_all,summary=F))
+test_inv_inf_all <- inv_logit_scaled(posterior_linpred(fit_inf_all, summary=F, newdata=test_informed_s, allow_new_levels=T))
+
+train_inv_inf_int <- inv_logit_scaled(posterior_linpred(fit_inf_int,summary=F))
+test_inv_inf_int <- inv_logit_scaled(posterior_linpred(fit_inf_int, summary=F, newdata=test_informed_s, allow_new_levels=T))
+
+train_inv_inf_base <- inv_logit_scaled(posterior_linpred(fit_inf_base,summary=F))
+test_inv_inf_base <- inv_logit_scaled(posterior_linpred(fit_inf_base, summary=F, newdata=test_informed_s, allow_new_levels=T))
+
+#Skeptic
+train_inv_skep_all <- inv_logit_scaled(posterior_linpred(fit_ske_all,summary=F))
+test_inv_ske_all <- inv_logit_scaled(posterior_linpred(fit_ske_all, summary=F, newdata=test_skeptic_s, allow_new_levels=T))
+train_inv_ske_int <- inv_logit_scaled(posterior_linpred(fit_ske_int,summary=F))
+test_inv_ske_int <- inv_logit_scaled(posterior_linpred(fit_ske_int, summary=F, newdata=test_skeptic_s, allow_new_levels=T))
+train_inv_ske_base <- inv_logit_scaled(posterior_linpred(fit_ske_base,summary=F))
+test_inv_ske_base <- inv_logit_scaled(posterior_linpred(fit_ske_base, summary=F, newdata=test_skeptic_s, allow_new_levels=T))
+
+
+for (i in seq(2000)){
+  #Informed
+    #All
+    train_informed_s$Predictions0 <- as.factor(ifelse(train_inv_inf_all[i,]>0.5, "Schizophrenia","Control"))
+    test_informed_s$Predictions0 <- as.factor(ifelse(test_inv_inf_all[i,]>0.5, "Schizophrenia","Control"))
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingSlopes" & PerformanceProb$Prior == 'Informed' & PerformanceProb$Type == "Training"] <- accuracy(train_informed_s, truth=Group, estimate=Predictions0)[,'.estimate']
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingSlopes" & PerformanceProb$Prior == 'Informed' & PerformanceProb$Type == "Test"] <- accuracy(test_informed_s, truth=Group, estimate = Predictions0)[,'.estimate']
+
+    #Intercept
+    train_informed_s$Predictions1 <- as.factor(ifelse(train_inv_inf_int[i,]>0.5, "Schizophrenia","Control"))
+    test_informed_s$Predictions1 <- as.factor(ifelse(test_inv_inf_int[i,]>0.5, "Schizophrenia","Control"))
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingIntercepts" & PerformanceProb$Prior == 'Informed' & PerformanceProb$Type == "Training"] <- accuracy(train_informed_s, truth=Group, estimate=Predictions1)[,'.estimate']
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingIntercepts" & PerformanceProb$Prior == 'Informed' & PerformanceProb$Type == "Test"] <- accuracy(test_informed_s, truth=Group, estimate = Predictions1)[,'.estimate']
+
+    #Baseline
+    train_informed_s$Predictions2 <- as.factor(ifelse(train_inv_inf_base[i,]>0.5, "Schizophrenia","Control"))
+    test_informed_s$Predictions2 <- as.factor(ifelse(test_inv_inf_base[i,]>0.5, "Schizophrenia","Control"))
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "FixedEffects" & PerformanceProb$Prior == 'Informed' & PerformanceProb$Type == "Training"] <- accuracy(train_informed_s, truth=Group, estimate=Predictions2)[,'.estimate']
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "FixedEffects" & PerformanceProb$Prior == 'Informed' & PerformanceProb$Type == "Test"] <- accuracy(test_informed_s, truth=Group, estimate = Predictions2)[,'.estimate']
+  
+  #Skeptic
+    #All
+    train_skeptic_s$Predictions0 <- as.factor(ifelse(train_inv_skep_all[i,]>0.5, "Schizophrenia","Control"))
+    test_skeptic_s$Predictions0 <- as.factor(ifelse(test_inv_ske_all[i,]>0.5, "Schizophrenia","Control"))
+  
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingSlopes" & PerformanceProb$Prior == 'Skeptic' & PerformanceProb$Type == "Training"] <- accuracy(train_skeptic_s, truth=Group, estimate=Predictions0)[,'.estimate']
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingSlopes" & PerformanceProb$Prior == 'Skeptic' & PerformanceProb$Type == "Test"] <- accuracy(test_skeptic_s, truth=Group, estimate = Predictions0)[,'.estimate']
+  
+  #Intercept
+    train_skeptic_s$Predictions1 <- as.factor(ifelse(train_inv_ske_int[i,]>0.5, "Schizophrenia","Control"))
+    test_skeptic_s$Predictions1 <- as.factor(ifelse(test_inv_ske_int[i,]>0.5, "Schizophrenia","Control"))
+  
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingIntercepts" & PerformanceProb$Prior == 'Skeptic' & PerformanceProb$Type == "Training"] <- accuracy(train_skeptic_s, truth=Group, estimate=Predictions1)[,'.estimate']
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingIntercepts" & PerformanceProb$Prior == 'Skeptic' & PerformanceProb$Type == "Test"] <- accuracy(test_skeptic_s, truth=Group, estimate = Predictions1)[,'.estimate']
+  
+  #Baseline
+    train_skeptic_s$Predictions2 <- as.factor(ifelse(train_inv_ske_base[i,]>0.5, "Schizophrenia","Control"))
+    test_skeptic_s$Predictions2 <- as.factor(ifelse(test_inv_ske_base[i,]>0.5, "Schizophrenia","Control"))
+  
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "FixedEffects" & PerformanceProb$Prior == 'Skeptic' & PerformanceProb$Type == "Training"] <- accuracy(train_skeptic_s, truth=Group, estimate=Predictions2)[,'.estimate']
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "FixedEffects" & PerformanceProb$Prior == 'Skeptic' & PerformanceProb$Type == "Test"] <- accuracy(test_skeptic_s, truth=Group, estimate = Predictions2)[,'.estimate'] 
+}
+
+```
+
+```{r plot predition uncertainty}
+PerformanceProb$Accuracy <- as.numeric(PerformanceProb$Accuracy)
+uncer_plot <- 
+  PerformanceProb %>% 
+  ggplot(aes(y=Accuracy,x=Model,fill=Type,color=Type), alpha=0.5)+
+  #geom_line(size=1)+
+  geom_point(position=position_dodge(width=0.5))+
+  geom_hline(yintercept=0.5)+
+  facet_wrap(~ Prior)+
+  #scale_y_continuous(limits = c(0.45, 1))+
+  ggtitle('Uncertainty prediction')
+ggsave('uncertainty prediction plot.png',uncer_plot,height=7,width=10,units="in")
+```
+
+
+v) discuss whether performance is as expected and feature importance is as expected.
+##Hvornår skal man lave feature importance?
+###Skal man lave feature importance på tværs af modeller og datasæt?
+```{r feature importance}
+pacman::p_load(DALEX,DALEXtra,kernlab,xgboost,knitr,dotwhisker)
+
+#remove predictions
+train_informed_s_fea <- subset(train_informed_s, select=-c(PredictionsPerc0,Predictions0,PredictionsPerc1,Predictions1,PredictionsPerc2,Predictions2))
+
+train_skeptic_s_fea <- subset(train_skeptic_s, select=-c(PredictionsPerc0,Predictions0,PredictionsPerc1,Predictions1,PredictionsPerc2,Predictions2))
+
+#informed
+d_inf <- train_informed_s_fea %>% 
+  mutate(ID=NULL, Trial=NULL,Preds=NULL,Predictions=NULL,v1_s=NULL) #whyv1_s
+  d_inf$Group <- as.factor(train_informed_s$Group)
+
+LogisticRegression_inf <- logistic_reg() %>% 
+  set_mode('classification') %>% 
+  set_engine('glm') %>% 
+  fit(Group ~ ., data=d_inf)
+
+explainer_inf <- 
+  explain_tidymodels(
+    LogisticRegression_inf,
+    data=train_informed_s_fea,
+    y = as.numeric(train_informed_s_fea$Group) - 1,
+    label = 'logReg',
+    verbose = FALSE
+  )
+
+#skeptic
+d_ske <- train_skeptic_s_fea %>% 
+  mutate(ID=NULL, Trial=NULL,Preds=NULL,Predictions=NULL,v1_s=NULL) #whyv1_s
+  d_inf$Group <- as.factor(train_skeptic_s$Group)
+
+LogisticRegression_ske <- logistic_reg() %>% 
+  set_mode('classification') %>% 
+  set_engine('glm') %>% 
+  fit(Group ~ ., data=d_ske)
+
+explainer_ske <- 
+  explain_tidymodels(
+    LogisticRegression_ske,
+    data=train_skeptic_s_fea,
+    y = as.numeric(train_skeptic_s_fea$Group) - 1,
+    label = 'logReg',
+    verbose = FALSE
+  )
+
+#plots
+exp_inf <- explainer_inf %>% 
+  model_parts() %>% 
+  plot(show_boxplots = FALSE) + ggtitle('Informed', '')
+
+exp_ske <- explainer_ske %>% 
+  model_parts() %>% 
+  plot(show_boxplots = FALSE) + ggtitle('Skeptic','')
+  + xlim(0,0.5)
+
+exp_combine <- grid.arrange(exp_inf,exp_ske,top="Feature importance",ncol=2)
+ggsave('feature_selection.png',exp_combine,width=10,height=7, units="in")
+```
+
+## Part III - Applying the ML pipeline to empirical data
+Download the empirical dataset from brightspace and apply your ML pipeline to the new data, adjusting where needed. Warning: in the simulated dataset we only had 10 features, now you have many more! Such is the life of the ML practitioner. Consider the impact a higher number of features will have on your ML inference, and decide whether you need to cut down the number of features before running the pipeline (or alternatively expand the pipeline to add feature selection).
+Data: https://www.dropbox.com/s/7ky1axvea33lgye/Ass3_empiricalData1.csv?dl=0
+
+#Look at week 11 slides
+```{r}
+#load
+df <- read.csv("C:/Users/sarak/OneDrive - Aarhus Universitet/26102021/Cog sci/3_semester/Methods__3/A3/Ass3_empiricalData1.csv")
+#glimpse
+glimpse(df)
+#plot
+Noise <- ggplot(aes(x= measurement, color= Group, fill=Group),data=d_skeptic)+
+  geom_density(alpha=0.5)+
+  facet_wrap(~Variable)+
+  xlab('Measurement')+
+  ylab('Density')+
+  ggtitle('Skeptic data')+
+  theme_bw()
+
+sim_data <- grid.arrange(MA,Noise)
+ggsave("simulated data.png",sim_data,height=10,width=10,units="in")
+```
+
+
+##Error in `contrasts<-`(`*tmp*`, value = contr.funs[1 + isOF[nn]]) : 
+  contrasts can be applied only to factors with 2 or more levels
+```{r PCA}
+rec <- recipe(~., data = df)
+pca_trans <- rec %>%
+  step_normalize(all_numeric()) %>%
+  step_pca(all_numeric(), num_comp = 3)
+pca_estimates <- prep(pca_trans, training = df)
+pca_data <- bake(pca_estimates, df)
+
+rng <- extendrange(c(pca_data$PC1, pca_data$PC2))
+plot(pca_data$PC1, pca_data$PC2,
+  xlim = rng, ylim = rng
+)
+
+#FA
+library(psych,fmsb,GPArotation)
+df_fil<-df[,8:398] #filter for the factors aka questions
+df_cor <- cor(df_fil)
+heatmap(df_cor)
+fa.parallel(df_cor,fa='fa')
+fa_max <- fa(df_fil,9)
+print(fa_max$loadings,cutoff=0.3)
+library(pheatmap)
+nine <- pheatmap(df_cor, cutree_rows = 9)
+ggsave('fa.png',nine,width=40,height=40,units="in")
+
+#Feature selection
+# ensure results are repeatable
+set.seed(7)
+# load the library
+pacman::p_load(mlbench)
+library(caret)
+# load the dataset
+# prepare training scheme
+control <- trainControl(method="repeatedcv", number=10, repeats=2)
+df$Diagnosis <- as.factor(df$Diagnosis)
+df$PatID <- as.factor(df$PatID)
+df$Language <- as.factor(df$Language)
+df$Gender <- as.factor(df$Gender)
+df$Trial <- as.factor(df$Trial)
+df$Corpus <- as.factor(df$Corpus)
+
+
+
+# train the model
+model <- train(df$Diagnosis~., data=df, method="regLogistic", preProcess="scale", trControl=control)
+
+# estimate variable importance
+importance <- varImp(model, scale=FALSE)
+# summarize importance
+print(importance)
+# plot importance
+plot(importance)
+```
+
+
+```{r}
+#remember when data budgetting to be carefull not to just take 20%, as the distribution og age,gender and other biases should be equally distributed in the test and training data
+TestID <- sample(seq(SampleSize),20)
+
+#MA
+train_informed <- df_informed_wide %>%
+  subset(!(ID %in% TestID))
+
+test_informed <- df_informed_wide %>%
+  subset(ID %in% TestID)
+#see facebook in coding 
+
+#tidymodels
+library(tidymodels)
+#MA
+rec_informed <- train_informed %>%
+  recipe(Group ~ . ) %>% # defines the outcome        
+  step_scale('PitchMode','PitchVar','SpeechRate','ProSpoTime','NumPause','LenPause','Noise1','Noise2','Noise3','Noise4' ) %>% # scales numeric predictors
+  step_center('PitchMode','PitchVar','SpeechRate','ProSpoTime','NumPause','LenPause','Noise1','Noise2','Noise3','Noise4') %>% # center numeric predictors
+  prep(training = train_informed, retain = TRUE)
+
+# recioe(Condition ~.) %>%  update_role(Id, Trial, new_role = "second_level) %>% step_scale(all.numveric()) %>% set_center(all.numeric()) %>% prep(training=train_data,retain=T)
+
+#make model
+model_intercept <- bf(Group ~ 1 + PitchMode+PitchVar+SpeechRate+ProSpoTime+NumPause+LenPause+Noise1+Noise2+Noise3+Noise4 + (1 | ID))
+#Group ~ . -Trial - ID
+
+#get prior
+#get_prior(model_intercept, data=train_informed_s,family = bernoulli)
+
+pa <- c(
+  prior(normal(0,1),class=b),
+  prior(normal(0,0.1),class=sd),
+  prior(lkj(1), class= cor),
+  prior(lkj(1),class=cor,group=ID),
+  prior(normal(0,1),class=Intercept)
+)
+
+#fit to prior
+##All
+model_all_inf_pa <- 
+  brm(
+    model_all, 
+    data = train_informed_s,
+    family = bernoulli,
+    prior = pa,  
+    sample_prior = "only", 
+    iter = 2000, #at least 4000 iters
+    warmup = 1000,#at least 400
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,#more cores, more parallel processing
+    chains = 2, #at least two chains, use 4
+    file = "Model_all_inf_prior",
+    control = list(adapt_delta = 0.99, max_treedepth = 20))
+
+#pp check
+  pp_check(model_all_inf_pa, ndraws = 100)+labs(title='Train Informed')
+ggsave('prior check model.png',pp)
+
+#fit to posterior
+##All
+fit_inf_all <- 
+  brm(
+    model_all, 
+    data = train_informed_s,
+    family = bernoulli,
+    prior = pa,  
+    sample_prior = T, 
+    save_pars = save_pars(all = TRUE),
+    iter = 2000,
+    warmup = 1000,
+    backend = "cmdstanr",
+    threads = threading(2),
+    cores = 2,
+    chains = 2,
+    file = "fit_inf_all",
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+    stan_model_args=list(stanc_options = list("O1"))
+    )
+
+#should it be updated with the update()
+
+#prior posterior update plot
+#Informed
+## All
+variables(fit_inf_all)
+pos_inf_all <- as_draws_df(fit_inf_all)
+
+###Intercept
+intercept <-
+  ggplot()+
+  geom_density(aes(pos_inf_all$Intercept),
+                   fill='green',
+                   color='green',
+                   alpha=0.3
+                   )+
+  geom_density(aes(pos_inf_all$prior_Intercept),
+                   fill='red',
+                   color='red',
+                   alpha=0.3
+                   )+
+    xlim(-4,5)+
+    ylim(0,3)+
+  xlab('Estimate')+
+  ggtitle('Intercept')
+
+### Variables
+pos_inf_all_var_tall <- 
+  select(pos_inf_all, c("b_PitchMode", "b_PitchVar", "b_SpeechRate", "b_ProSpoTime", "b_NumPause", "b_LenPause", "b_Noise1", "b_Noise2", "b_Noise3", "b_Noise4","prior_b")) %>% 
+  mutate(tall=1) %>% 
+  reshape2::melt(id.vars='tall')
+
+
+variables <- 
+  ggplot()+
+  geom_density(data=pos_inf_all_var_tall, aes(x=value, color=variable, fill=variable), alpha=0.3)+
+  xlim(-4,5)+
+  ylim(0,3)+
+  xlab('Estimates')+
+  ggtitle('Variables')
+
+### SD
+pos_inf_all_sd_tall <- pos_inf_all %>% 
+  select(c("sd_ID__PitchMode", "sd_ID__PitchVar", "sd_ID__SpeechRate", "sd_ID__ProSpoTime", "sd_ID__NumPause",  "sd_ID__LenPause" ,"sd_ID__Noise1" ,"sd_ID__Noise2", "sd_ID__Noise3" , "sd_ID__Noise4","prior_sd_ID")) %>% 
+  mutate(tall=1) %>% 
+  reshape2::melt(id.vars='tall')
+    
+sd <- ggplot()+
+  geom_density(data=pos_inf_all_sd_tall, aes(x=value, color=variable, fill=variable), alpha=0.3)+
+  ylim(0,8)+
+  xlim(-0.1,1)+
+  xlab('Estimates')+
+  ggtitle('Standard deviations')
+ggsave('sd.PNG',sd)
+ggsave('var.png',variables)
+
+##combine
+pop_inf_all <- grid.arrange(variables, sd,intercept, top='Prior-posterior Informed',ncol=2)
+ggsave("prior_posterior_inf_all.PNG",pop_inf_all,height=7,width=10,units="in")
+
+#model output
+summary(fit_inf_all)
+
+#predictions
+##Trained
+ train_skeptic_s$PredictionsPerc2 <- predict(fit_ske_base)[, 1]
+ train_skeptic_s$Predictions2[train_skeptic_s$PredictionsPerc2 > 0.5] <- "Schizophrenia"
+ train_skeptic_s$Predictions2[train_skeptic_s$PredictionsPerc2 <= 0.5] <- "Control"
+
+
+train_skeptic_s <- train_skeptic_s %>% 
+  mutate(
+    Group = as.factor(Group), 
+    Predictions0 = as.factor(Predictions0),
+    Predictions1 = as.factor(Predictions1),
+    Predictions2 = as.factor(Predictions2)
+  )
+##Test
+####Base
+ test_skeptic_s$PredictionsPerc2 <- predict(fit_ske_base,newdata=test_skeptic_s,allow_new_levels=TRUE)[, 1]
+ test_skeptic_s$Predictions2[test_skeptic_s$PredictionsPerc2 > 0.5] <- "Schizophrenia"
+ test_skeptic_s$Predictions2[test_skeptic_s$PredictionsPerc2 <= 0.5] <- "Control"
+
+
+test_skeptic_s <- test_skeptic_s %>% 
+  mutate(
+    Group = as.factor(Group), 
+    Predictions0 = as.factor(Predictions0),
+    Predictions1 = as.factor(Predictions1),
+    Predictions2 = as.factor(Predictions2)
+  )
+
+#train informed all
+conf_mat(
+  train_informed_s,
+  truth = Group,
+  estimate = Predictions0,
+  dnn = c('Prediction','Truth')
+)
+#define vectors of actual values and predicted values
+actual <- factor(rep(c('SC', 'HC'), times=c(800, 800)))
+pred <- factor(rep(c('SC', 'HC', 'SC', 'HC'), times=c(780,20,19,781)))
+#create confusion matrix and calculate metrics related to confusion matrix
+conf_mat_info_train_all <- confusionMatrix(pred, actual, mode = "everything", positive="SC")
+
+PerformanceProb <- tibble(expand_grid(
+  Sample=seq(2000), # remember this is from brm(iter=XX), sample=seq(XX)
+  Model=c('FixedEffects','VaryingIntercepts','VaryingSlopes'), #add more coloumns, if you have more models
+  Prior = c('Informed','Skeptic'),
+  Type = c('Training', 'Test'),
+  Accuracy = NULL
+))
+
+#Informed
+train_inv_inf_all <- inv_logit_scaled(posterior_linpred(fit_inf_all,summary=F))
+test_inv_inf_all <- inv_logit_scaled(posterior_linpred(fit_inf_all, summary=F, newdata=test_informed_s, allow_new_levels=T))
+
+train_inv_inf_int <- inv_logit_scaled(posterior_linpred(fit_inf_int,summary=F))
+test_inv_inf_int <- inv_logit_scaled(posterior_linpred(fit_inf_int, summary=F, newdata=test_informed_s, allow_new_levels=T))
+
+train_inv_inf_base <- inv_logit_scaled(posterior_linpred(fit_inf_base,summary=F))
+test_inv_inf_base <- inv_logit_scaled(posterior_linpred(fit_inf_base, summary=F, newdata=test_informed_s, allow_new_levels=T))
+
+#Skeptic
+train_inv_skep_all <- inv_logit_scaled(posterior_linpred(fit_ske_all,summary=F))
+test_inv_ske_all <- inv_logit_scaled(posterior_linpred(fit_ske_all, summary=F, newdata=test_skeptic_s, allow_new_levels=T))
+train_inv_ske_int <- inv_logit_scaled(posterior_linpred(fit_ske_int,summary=F))
+test_inv_ske_int <- inv_logit_scaled(posterior_linpred(fit_ske_int, summary=F, newdata=test_skeptic_s, allow_new_levels=T))
+train_inv_ske_base <- inv_logit_scaled(posterior_linpred(fit_ske_base,summary=F))
+test_inv_ske_base <- inv_logit_scaled(posterior_linpred(fit_ske_base, summary=F, newdata=test_skeptic_s, allow_new_levels=T))
+
+
+for (i in seq(2000)){
+  #Informed
+    #All
+    train_informed_s$Predictions0 <- as.factor(ifelse(train_inv_inf_all[i,]>0.5, "Schizophrenia","Control"))
+    test_informed_s$Predictions0 <- as.factor(ifelse(test_inv_inf_all[i,]>0.5, "Schizophrenia","Control"))
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingSlopes" & PerformanceProb$Prior == 'Informed' & PerformanceProb$Type == "Training"] <- accuracy(train_informed_s, truth=Group, estimate=Predictions0)[,'.estimate']
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingSlopes" & PerformanceProb$Prior == 'Informed' & PerformanceProb$Type == "Test"] <- accuracy(test_informed_s, truth=Group, estimate = Predictions0)[,'.estimate']
+
+    #Intercept
+    train_informed_s$Predictions1 <- as.factor(ifelse(train_inv_inf_int[i,]>0.5, "Schizophrenia","Control"))
+    test_informed_s$Predictions1 <- as.factor(ifelse(test_inv_inf_int[i,]>0.5, "Schizophrenia","Control"))
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingIntercepts" & PerformanceProb$Prior == 'Informed' & PerformanceProb$Type == "Training"] <- accuracy(train_informed_s, truth=Group, estimate=Predictions1)[,'.estimate']
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingIntercepts" & PerformanceProb$Prior == 'Informed' & PerformanceProb$Type == "Test"] <- accuracy(test_informed_s, truth=Group, estimate = Predictions1)[,'.estimate']
+
+    #Baseline
+    train_informed_s$Predictions2 <- as.factor(ifelse(train_inv_inf_base[i,]>0.5, "Schizophrenia","Control"))
+    test_informed_s$Predictions2 <- as.factor(ifelse(test_inv_inf_base[i,]>0.5, "Schizophrenia","Control"))
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "FixedEffects" & PerformanceProb$Prior == 'Informed' & PerformanceProb$Type == "Training"] <- accuracy(train_informed_s, truth=Group, estimate=Predictions2)[,'.estimate']
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "FixedEffects" & PerformanceProb$Prior == 'Informed' & PerformanceProb$Type == "Test"] <- accuracy(test_informed_s, truth=Group, estimate = Predictions2)[,'.estimate']
+  
+  #Skeptic
+    #All
+    train_skeptic_s$Predictions0 <- as.factor(ifelse(train_inv_skep_all[i,]>0.5, "Schizophrenia","Control"))
+    test_skeptic_s$Predictions0 <- as.factor(ifelse(test_inv_ske_all[i,]>0.5, "Schizophrenia","Control"))
+  
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingSlopes" & PerformanceProb$Prior == 'Skeptic' & PerformanceProb$Type == "Training"] <- accuracy(train_skeptic_s, truth=Group, estimate=Predictions0)[,'.estimate']
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingSlopes" & PerformanceProb$Prior == 'Skeptic' & PerformanceProb$Type == "Test"] <- accuracy(test_skeptic_s, truth=Group, estimate = Predictions0)[,'.estimate']
+  
+  #Intercept
+    train_skeptic_s$Predictions1 <- as.factor(ifelse(train_inv_ske_int[i,]>0.5, "Schizophrenia","Control"))
+    test_skeptic_s$Predictions1 <- as.factor(ifelse(test_inv_ske_int[i,]>0.5, "Schizophrenia","Control"))
+  
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingIntercepts" & PerformanceProb$Prior == 'Skeptic' & PerformanceProb$Type == "Training"] <- accuracy(train_skeptic_s, truth=Group, estimate=Predictions1)[,'.estimate']
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "VaryingIntercepts" & PerformanceProb$Prior == 'Skeptic' & PerformanceProb$Type == "Test"] <- accuracy(test_skeptic_s, truth=Group, estimate = Predictions1)[,'.estimate']
+  
+  #Baseline
+    train_skeptic_s$Predictions2 <- as.factor(ifelse(train_inv_ske_base[i,]>0.5, "Schizophrenia","Control"))
+    test_skeptic_s$Predictions2 <- as.factor(ifelse(test_inv_ske_base[i,]>0.5, "Schizophrenia","Control"))
+  
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "FixedEffects" & PerformanceProb$Prior == 'Skeptic' & PerformanceProb$Type == "Training"] <- accuracy(train_skeptic_s, truth=Group, estimate=Predictions2)[,'.estimate']
+    
+    PerformanceProb$Accuracy[PerformanceProb$Sample == i & PerformanceProb$Model == "FixedEffects" & PerformanceProb$Prior == 'Skeptic' & PerformanceProb$Type == "Test"] <- accuracy(test_skeptic_s, truth=Group, estimate = Predictions2)[,'.estimate'] 
+}
+
+PerformanceProb$Accuracy <- as.numeric(PerformanceProb$Accuracy)
+uncer_plot <- 
+  PerformanceProb %>% 
+  ggplot(aes(y=Accuracy,x=Model,fill=Type,color=Type), alpha=0.5)+
+  #geom_line(size=1)+
+  geom_point(position=position_dodge(width=0.5))+
+  geom_hline(yintercept=0.5)+
+  facet_wrap(~ Prior)+
+  #scale_y_continuous(limits = c(0.45, 1))+
+  ggtitle('Uncertainty prediction')
+ggsave('uncertainty prediction plot.png',uncer_plot,height=7,width=10,units="in")
+```
+
+```{r feature importance for empirical data, where to put it?}
+pacman::p_load(DALEX,DALEXtra,kernlab,xgboost,knitr,dotwhisker)
+
+#remove predictions
+train_informed_s_fea <- subset(train_informed_s, select=-c(PredictionsPerc0,Predictions0,PredictionsPerc1,Predictions1,PredictionsPerc2,Predictions2))
+
+train_skeptic_s_fea <- subset(train_skeptic_s, select=-c(PredictionsPerc0,Predictions0,PredictionsPerc1,Predictions1,PredictionsPerc2,Predictions2))
+
+#informed
+d_inf <- train_informed_s_fea %>% 
+  mutate(ID=NULL, Trial=NULL,Preds=NULL,Predictions=NULL,v1_s=NULL) #whyv1_s
+  d_inf$Group <- as.factor(train_informed_s$Group)
+
+LogisticRegression_inf <- logistic_reg() %>% 
+  set_mode('classification') %>% 
+  set_engine('glm') %>% 
+  fit(Group ~ ., data=d_inf)
+
+explainer_inf <- 
+  explain_tidymodels(
+    LogisticRegression_inf,
+    data=train_informed_s_fea,
+    y = as.numeric(train_informed_s_fea$Group) - 1,
+    label = 'logReg',
+    verbose = FALSE
+  )
+
+#skeptic
+d_ske <- train_skeptic_s_fea %>% 
+  mutate(ID=NULL, Trial=NULL,Preds=NULL,Predictions=NULL,v1_s=NULL) #whyv1_s
+  d_inf$Group <- as.factor(train_skeptic_s$Group)
+
+LogisticRegression_ske <- logistic_reg() %>% 
+  set_mode('classification') %>% 
+  set_engine('glm') %>% 
+  fit(Group ~ ., data=d_ske)
+
+explainer_ske <- 
+  explain_tidymodels(
+    LogisticRegression_ske,
+    data=train_skeptic_s_fea,
+    y = as.numeric(train_skeptic_s_fea$Group) - 1,
+    label = 'logReg',
+    verbose = FALSE
+  )
+
+#plots
+exp_inf <- explainer_inf %>% 
+  model_parts() %>% 
+  plot(show_boxplots = FALSE) + ggtitle('Informed', '')
+
+exp_ske <- explainer_ske %>% 
+  model_parts() %>% 
+  plot(show_boxplots = FALSE) + ggtitle('Skeptic','')
+  + xlim(0,0.5)
+
+exp_combine <- grid.arrange(exp_inf,exp_ske,top="Feature importance",ncol=2)
+ggsave('feature_selection.png',exp_combine,width=10,height=7, units="in")
+```
+
