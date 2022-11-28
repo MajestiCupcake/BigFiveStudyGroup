@@ -1,0 +1,16 @@
+Definitely a pass (pending some adjustments below, marked as crucial). Some comments
+> Do we need a sensitivity analysis of the prior’s influence?
+No. but mentioning the potential issue of fine-tuning the priors would be appreciated.
+> All models seem to be estimating probably.
+Not sure I get this 😊
+> part 3: why 9 factors? (it works, but it’d be nice to hear the reasoning)
+> No matter what prior we set for the standard deviation it kept having such a huge cap. We tried n(0,1) (above), n(0,2), n(0,4), n(0,6), it came slightly closer, but we could not see the idea of a standard deviation varying with that much. Would it make more sense to narrow the prior or what should we do?
+Without re-running your code, I’d say it’s because the NewID is not matched participants, but individuals, so the individual variability is maxxed (some are schizophrenia, some are controls, at the two extremes of the scale). I would drop the random intercept in this case, but I don’t think it affects your results.
+> Not sure how to report these findings/if we should have used a different method to sum/extract the variables from the 398 variables of interest.
+In a paper I’d ask for the top loads for the important factors (8, 6, 9, 1), or more generally for all. Also note that in a ML perspective, significance (or ROPE) of the factors is not that telling (a more fitting measure would be drop in test performance if you reshuffle the values in that feature in the test set)
+
+I’d also ask for an analysis of the performance: which participants are most likely misdiagnosed?
+Finally, I cannot find any good description of how you separated the test set (crucial)
+
+https://github.com/MajestiCupcake/Methods__3/tree/main/A3/A3_handin.docx
+https://github.com/MajestiCupcake/Methods__3/tree/main/A3/A3_24.Rmd
