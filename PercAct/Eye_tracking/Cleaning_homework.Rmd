@@ -1,0 +1,151 @@
+---
+title: "Eye tracking Workshop CogSci Fall 2022"
+subtitle: "Data cleaning exercise"
+author: "Fabio Trecca"
+date: "2/12/2022"
+output: html_document
+---
+
+Cognitive SCience Eye-tracking Workshop Fall 2022
+Fabio Trecca
+Perception and Action (w/ Cordula Vesper)
+Cognitive Science, 3rd semester
+
+Data cleaning exercise
+*Deadline: Wednesday 7/12, 12 noon
+
+Do this exercise in your study group!
+
+```{r setup, include=FALSE}
+require(knitr)
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse,reader)
+```
+
+Load the data for all the participants *in your study group* who did the **FORAGING (searching v counting) experiment**. 
+
+The files that we exported from EyeLink Data Viewer have been sold to us as Excel files, but they are really tab-delimited files disguised as .xls files (rascals...), so trying to open them with something like readxl::read_excel won't work. Instead, use reader::read_delim and specify (delim = "\t").
+
+```{r}
+maria_samples <- read_delim("maria1_samples.xls", "\t")
+maria_fixations <- read_delim("maria1_fixations.xls", "\t")
+maria_saccades <- read_delim("maria1_saccades.xls", "\t")
+
+Freddy_samples <- read_delim("Freddy2_samples.xls", "\t")
+Freddy_fixations <- read_delim("Freddy2_fixations.xls", "\t")
+Freddy_saccades <- read_delim("Freddy2_saccades.xls", "\t")
+
+Sword_samples <- read_delim("Sword2_samples.xls", "\t")
+Sword_fixations <- read_delim("Sword2_fixations.xls", "\t")
+Sword_saccades <- read_delim("Sword2_saccades.xls", "\t")
+```
+
+Row-bind data sets across participants, so that you end up with three separate data sets — Samples, Fixations, and Saccades — including all participants in your study group.
+
+```{r}
+Samples <- rbind(maria_samples,Freddy_samples,Sword_samples)
+Fixations <- rbind(maria_fixations,Freddy_fixations,Sword_fixations)
+Saccades <- rbind(maria_saccades,Freddy_saccades,Sword_saccades)
+```
+
+Use the participant ID to derive information about the order of the two conditions in the experiment. Make a column (call it Order) that contains either the number 1 (search first, count last) or 2 (count first, search last).
+
+```{r}
+# unsure of this, please check
+Samples$Order <- ifelse(Samples$TRIAL_INDEX >= 1 & Samples$TRIAL_INDEX <= 5,1,2)
+Fixations$Order <- ifelse(Fixations$TRIAL_INDEX >= 1 & Fixations$TRIAL_INDEX <= 5,1,2)
+Saccades$Order <- ifelse(Saccades$TRIAL_INDEX >= 1 & Saccades$TRIAL_INDEX <= 5,1,2)
+```
+
+Make a new column called "Task" and add information to this column on whether each trial is "Searching" or "Counting". You can easily calculate this by using the trial number and the Order variable we just made.
+
+```{r}
+Samples$Task <- 
+Fixations$Task <- 
+Saccades$Task <- 
+```
+
+Keep only the variables we need and drop the rest! I have picked the labels — you make sure to find the columns that match the labels.
+
+```{r}
+Samples <- Samples %>% 
+  select(
+    ParticipantID= ,
+    Trial= ,
+    Time= ,
+    LeftGazeX= ,
+    LeftGazeY= ,
+    RightGazeX= ,
+    RightGazeY= ,
+    LeftPupilSize= ,
+    RightPupilSize= ,
+    Order,
+    Task
+    ) 
+
+Fixations <- Fixations %>% 
+  select(
+    ParticipantID= ,
+    Trial= ,
+    FixationNo= ,
+    StartTime= ,
+    EndTime= ,
+    Duration= ,
+    PositionX= ,
+    PositionY= ,
+    PupilSize= ,
+    EyeUsed= ,
+    Order,
+    Task
+    ) 
+
+Saccades <- Saccades %>%
+  select(
+    ParticipantID= ,
+    Trial= ,
+    SaccadeNo= ,
+    StartTime= ,
+    EndTime= ,
+    Duration= ,
+    StartX= ,
+    StartY= ,
+    EndX= ,
+    EndY= ,
+    PeakVelocity= ,
+    MeanVelocity= ,
+    Blink= ,
+    Direction= ,
+    Amplitude= ,
+    EyeUsed= ,
+    Order,
+    Task
+    )
+```
+
+Note that Fixations has two variable for coordinates (PositionX and PositionY) but Samples has four (x/y for the left eye and x/y for the right eye). We like the first option better, given that two of the four columns will always be empty by definition. Thus, in Samples, make two columns (PositionX and PositionY) by collapsing the four original columns; then add a column called "EyeUsed" that says either "Left" or "Right".
+
+```{r}
+Samples$EyeUsed <-  
+```
+
+BAM!
+
+It may happen that when you open the file, some variables have two extra zeros and have been transformed into a character variable (rascals...). Check these variables and fix the problem, if you have it.
+
+Gaze X: values should be between 0 and 1680
+Gaze Y: values should be between 0 and 1050
+Pupil Size: values should be 4 digits (no more than 9999)
+
+These values could also have extra zeros: Time, StartX, StartY, MeanVelocity, PeakVelocity. Fix in case!
+
+```{r}
+
+```
+
+Save as .csv file, add your study group number to the name, and upload to the folder (link on Brightspace).
+
+```{r}
+write_csv(Samples, "Samples_STUDYGROUP_X.csv")
+write_csv(Fixations, "Fixations_STUDYGROUP_X.csv")
+write_csv(Saccades, "Saccades_STUDYGROUP_X.csv")
+```
